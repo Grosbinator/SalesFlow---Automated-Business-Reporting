@@ -1,0 +1,15 @@
+# Environnement Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Données et fichiers générés par le pipeline
+*.csv
+*.db
+*.xlsx
+*.json
+
+# Fichiers locaux
+.vscode/
+CLAUDE.md
