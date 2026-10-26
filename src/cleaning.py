@@ -65,6 +65,24 @@ def main():
     print("Subscriptions :", subscriptions.shape)
     print("Payments :", payments.shape)
 
+    # Repérage des abonnements associés à un client inconnu.
+    unknown_customers = subscriptions.loc[
+        ~subscriptions["customer_id"].isin(
+            customers["customer_id"]
+        )
+    ]
+    print("Abonnements avec un customer_id inconnu :")
+    print(unknown_customers)
+
+    # Repérage des paiements associés à un abonnement inconnu.
+    unknown_subscriptions = payments.loc[
+        ~payments["subscription_id"].isin(
+            subscriptions["subscription_id"]
+        )
+    ]
+    print("Paiements avec un subscription_id inconnu :")
+    print(unknown_subscriptions)
+
     # Repérage des paiements en double.
     duplicates = payments[
         payments["payment_id"].duplicated(keep=False)
