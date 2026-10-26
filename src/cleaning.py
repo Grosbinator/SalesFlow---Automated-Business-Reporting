@@ -81,6 +81,23 @@ def main():
     ]
     print(invalid_dates)
 
+    # Repérage des montants manquants ou négatifs.
+    payments["amount"] = pd.to_numeric(
+        payments["amount"],
+        errors="coerce",
+    )
+
+    missing_amounts = payments[
+        payments["amount"].isna()
+    ]
+    negative_amounts = payments[
+        payments["amount"] < 0
+    ]
+    print("Montants manquants ou invalides :")
+    print(missing_amounts)
+    print("Montants négatifs :")
+    print(negative_amounts)
+
 
 if __name__ == "__main__":
     main()
