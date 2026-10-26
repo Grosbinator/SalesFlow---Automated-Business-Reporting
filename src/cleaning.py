@@ -71,6 +71,16 @@ def main():
     ]
     print(duplicates)
 
+    # Repérage des dates de paiement invalides.
+    payments["payment_date"] = pd.to_datetime(
+        payments["payment_date"],
+        errors="coerce",
+    )
+    invalid_dates = payments[
+        payments["payment_date"].isna()
+    ]
+    print(invalid_dates)
+
 
 if __name__ == "__main__":
     main()
