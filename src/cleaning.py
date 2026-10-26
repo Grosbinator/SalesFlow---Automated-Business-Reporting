@@ -65,6 +65,12 @@ def main():
     print("Subscriptions :", subscriptions.shape)
     print("Payments :", payments.shape)
 
+    # Repérage des paiements en double.
+    duplicates = payments[
+        payments["payment_id"].duplicated(keep=False)
+    ]
+    print(duplicates)
+
 
 if __name__ == "__main__":
     main()
