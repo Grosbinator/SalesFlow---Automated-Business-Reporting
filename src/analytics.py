@@ -262,6 +262,25 @@ def customers_overview(connection):
     return customers
 
 
+def customers_by_country(connection):
+    """Nombre de clients et de clients actifs par pays."""
+    return pd.read_sql_query(
+        """
+        SELECT c.country,
+               COUNT(*) AS customers,
+               SUM(EXISTS (
+                   SELECT 1 FROM subscriptions s
+                   WHERE s.customer_id = c.customer_id AND s.status = ?
+               ))       AS active_customers
+        FROM customers c
+        GROUP BY c.country
+        ORDER BY customers DESC, c.country
+        """,
+        connection,
+        params=(ACTIVE,),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Synthèse
 # ---------------------------------------------------------------------------
