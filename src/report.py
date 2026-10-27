@@ -292,3 +292,51 @@ def with_error_type(anomalies):
     anomalies = anomalies.copy()
     anomalies["error_type"] = anomalies["error_message"].str.split(" : ").str[0]
     return anomalies
+
+
+# ---------------------------------------------------------------------------
+# Feuilles
+# ---------------------------------------------------------------------------
+
+def build_dashboard(sheet, connection, comparison, plans, anomalies):
+    write_title(
+        sheet,
+        "SalesFlow — Tableau de bord",
+        f"Généré le {datetime.now():%d/%m/%Y à %H:%M}",
+    )
+    for column in range(1, 13):
+        sheet.column_dimensions[get_column_letter(column)].width = 16
+
+    kpis = [
+        ("Chiffre d'affaires encaissé", analytics.collected_revenue(connection), EURO),
+        ("Revenu récurrent mensuel", analytics.current_mrr(connection), EURO),
+        ("Clients actifs", analytics.active_customers(connection), INTEGER),
+        ("Panier moyen", analytics.average_basket(connection), EURO),
+        ("Taux d'échec des paiements", analytics.failure_rate(connection), PERCENT),
+        ("Anomalies détectées", None if anomalies is None else len(anomalies), INTEGER),
+    ]
+    for index, (label, value, number_format) in enumerate(kpis):
+        write_kpi(sheet, 4, 1 + 2 * index, label, value, number_format)
+
+    if not comparison.empty:
+        sheet.add_image(revenue_chart(comparison), "A8")
+    if not plans.empty:
+        sheet.add_image(plan_chart(plans), "H8")
+
+
+def build_revenue_sheet(sheet, comparison):
+    write_title(
+        sheet,
+        "Revenue — évolution mensuelle",
+        "Revenu encaissé = paiements réussis, au mois de la date de paiement. "
+        "Revenu récurrent théorique = prix mensuels des abonnements en cours.",
+    )
+    end_row = write_table(sheet, comparison, 4)
+    autosize_columns(sheet)
+    sheet.freeze_panes = "A5"
+
+    monthly = comparison[comparison["successful_payments"] > 0]
+    if not monthly.empty:
+        anchor_column = get_column_letter(len(comparison.columns) + 2)
+        sheet.add_image(collected_chart(monthly), f"{anchor_column}4")
+    return end_row
