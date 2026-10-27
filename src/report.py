@@ -417,3 +417,19 @@ def build_data_quality_sheet(sheet, anomalies):
         sheet, anomalies[ANOMALY_COLUMNS], row, title="Détail des anomalies"
     )
     autosize_columns(sheet)
+
+
+def build_report(connection, anomalies):
+    """Construit le classeur Excel complet (sans l'enregistrer)."""
+    comparison = analytics.revenue_comparison(connection)
+    plans = analytics.subscriptions_by_plan(connection)
+
+    workbook = Workbook()
+    dashboard = workbook.active
+    dashboard.title = "Dashboard"
+    build_dashboard(dashboard, connection, comparison, plans, anomalies)
+    build_revenue_sheet(workbook.create_sheet("Revenue"), comparison)
+    build_customers_sheet(workbook.create_sheet("Customers"), connection)
+    build_subscriptions_sheet(workbook.create_sheet("Subscriptions"), connection, plans)
+    build_data_quality_sheet(workbook.create_sheet("Data Quality"), anomalies)
+    return workbook
