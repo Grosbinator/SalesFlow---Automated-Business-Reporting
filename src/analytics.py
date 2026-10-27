@@ -59,3 +59,22 @@ def active_customers(connection):
         "SELECT COUNT(DISTINCT customer_id) FROM subscriptions WHERE status = ?",
         (ACTIVE,),
     )
+
+
+def average_basket(connection):
+    """Panier moyen : montant moyen des paiements réussis (None si aucun)."""
+    return scalar(
+        connection,
+        "SELECT AVG(amount) FROM payments WHERE status = ?",
+        (SUCCESS,),
+    )
+
+
+def failure_rate(connection):
+    """Taux d'échec : paiements échoués / total des paiements (None si aucun)."""
+    return scalar(
+        connection,
+        "SELECT CAST(SUM(status = ?) AS REAL) / NULLIF(COUNT(*), 0) "
+        "FROM payments",
+        (FAILED,),
+    )
