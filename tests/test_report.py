@@ -87,3 +87,49 @@ def test_main_writes_the_excel_file(connection, tmp_path, monkeypatch):
     report.main()
 
     assert load_workbook(output).sheetnames[0] == "Dashboard"
+
+
+# ---------------------------------------------------------------------------
+# 2. Contenu des feuilles
+# ---------------------------------------------------------------------------
+
+def test_dashboard_shows_kpis_and_charts(connection):
+    sheet = report.build_report(connection, ANOMALIES)["Dashboard"]
+    # Tuiles KPI sur deux colonnes : valeurs en ligne 5, colonnes A, C, E...
+    values = [sheet.cell(5, column).value for column in (1, 3, 5, 7, 9, 11)]
+    assert values == [216, 108, 1, pytest.approx(54), pytest.approx(0.2), 4]
+    assert len(sheet._images) == 2
+
+
+def test_revenue_sheet_lists_each_month(connection):
+    sheet = report.build_report(connection, ANOMALIES)["Revenue"]
+    assert sheet.cell(4, 1).value == "Mois"
+    assert column_values(sheet, 1, 5, 7) == ["2026-01", "2026-02", "2026-03"]
+    assert column_values(sheet, 3, 5, 7) == [29, 108, 79]  # revenu encaissé
+    assert sheet.cell(5, 3).number_format == report.EURO
+
+
+def test_customers_sheet_lists_every_customer(connection):
+    sheet = report.build_report(connection, ANOMALIES)["Customers"]
+    customers = find_table(sheet, "Liste des clients")
+    assert [row[0] for row in customers] == ["C1", "C2", "C3"]
+    assert customers[0][-1] == "Oui"  # C1 est actif
+    assert customers[2][-1] == "Non"  # C3 n'a aucun abonnement
+
+
+def test_subscriptions_sheet_crosses_plan_and_status(connection):
+    sheet = report.build_report(connection, ANOMALIES)["Subscriptions"]
+    assert find_table(sheet, "Par formule et par statut") == [
+        ("Pro", 1, 1, 2),
+        ("Starter", 1, 0, 1),
+    ]
+
+
+def test_data_quality_summarises_anomalies(connection):
+    sheet = report.build_report(connection, ANOMALIES)["Data Quality"]
+    assert find_table(sheet, "Par fichier") == [
+        ("payments.csv", 3),
+        ("subscriptions.csv", 1),
+    ]
+    assert find_table(sheet, "Par type d'erreur")[0] == ("Identifiant dupliqué", 2)
+    assert len(find_table(sheet, "Détail des anomalies")) == 4
