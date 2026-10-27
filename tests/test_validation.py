@@ -103,3 +103,78 @@ def test_describe_shows_file_line_column_and_full_row():
 def test_ask_choice_repeats_until_answer_is_valid():
     ask = answers("x", "", "S")
     assert validation.ask_choice(ask, "?", {"s": "Supprimer"}) == "s"
+
+
+# ---------------------------------------------------------------------------
+# 2. Décisions
+# ---------------------------------------------------------------------------
+
+def test_modify_value_fixes_the_anomaly():
+    frames = make_frames(payments=make_df(VALID_PAYMENT, {"amount": ""}))
+    log, kept, completed = validation.review(frames, answers("m", "49.0"), Console())
+    assert completed
+    assert frames["payments.csv"].at[0, "amount"] == "49.0"
+    assert log[0]["action"] == "valeur modifiée"
+    assert (log[0]["old_value"], log[0]["new_value"]) == ("", "49.0")
+
+
+def test_invalid_new_value_is_proposed_again():
+    """Une valeur corrigée mais toujours fausse redevient une anomalie."""
+    frames = make_frames(payments=make_df(VALID_PAYMENT, {"payment_date": "2026-13-40"}))
+    validation.review(frames, answers("m", "2026-14-01", "m", "2026-10-24"), Console())
+    assert frames["payments.csv"].at[0, "payment_date"] == "2026-10-24"
+
+
+def test_delete_row_removes_it_and_keeps_line_numbers():
+    """Après une suppression, les lignes suivantes gardent leur numéro du CSV."""
+    payments = make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001", "subscription_id": "S999"},  # ligne 2
+        {"payment_id": "P002", "amount": "abc"},             # ligne 3
+    )
+    frames = make_frames(payments=payments)
+    console = Console()
+    validation.review(frames, answers("s", "s"), console)
+    assert frames["payments.csv"].empty
+    assert "Ligne : 3" in console.text
+
+
+def test_deleting_one_duplicate_resolves_the_other():
+    """Doublon P001 : supprimer une ligne règle aussi l'anomalie de l'autre."""
+    payments = make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001", "payment_date": "2026-13-40"},
+        {"payment_id": "P001"},
+    )
+    frames = make_frames(payments=payments)
+    log, _, completed = validation.review(frames, answers("s"), Console())
+    assert completed
+    assert len(log) == 1
+    assert list(frames["payments.csv"]["payment_date"]) == ["2026-01-12"]
+
+
+def test_keep_is_offered_only_for_harmless_anomalies():
+    """Un montant négatif peut être gardé (remboursement) ; une référence
+    inconnue non, car database.py refuserait la ligne."""
+    negative = make_frames(payments=make_df(VALID_PAYMENT, {"amount": "-29.0"}))
+    log, kept, completed = validation.review(negative, answers("g"), Console())
+    assert completed and len(kept) == 1
+    assert negative["payments.csv"].at[0, "amount"] == "-29.0"
+
+    unknown = make_frames(payments=make_df(VALID_PAYMENT, {"subscription_id": "S999"}))
+    console = Console()
+    validation.review(unknown, answers("g", "q"), console)  # « g » refusé
+    assert "Garder" not in console.text
+
+
+def test_quit_stops_the_review():
+    frames = make_frames(payments=make_df(VALID_PAYMENT, {"amount": ""}))
+    log, _, completed = validation.review(frames, answers("q"), Console())
+    assert not completed and log == []
+
+
+def test_cancel_modification_shows_the_anomaly_again():
+    frames = make_frames(payments=make_df(VALID_PAYMENT, {"amount": ""}))
+    # m, Entrée (pas de valeur), n (ne pas vider) -> annulé ; puis q.
+    validation.review(frames, answers("m", "", "n", "q"), Console())
+    assert frames["payments.csv"].at[0, "amount"] == ""
