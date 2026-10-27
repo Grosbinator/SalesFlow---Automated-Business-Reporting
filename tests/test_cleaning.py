@@ -65,3 +65,16 @@ def found(anomalies):
         (a["file_name"], a["row_number"], a["column_name"])
         for a in anomalies
     }
+
+
+# ---------------------------------------------------------------------------
+# 1. Numéro de ligne : la base de tout le fichier d'anomalies
+# ---------------------------------------------------------------------------
+
+def test_row_number_matches_line_in_csv_file():
+    """Le 1er enregistrement doit être signalé « ligne 2 » (la ligne 1 est
+    l'en-tête), pour retrouver l'erreur directement dans le CSV."""
+    anomalies = []
+    cleaning.add_anomaly(anomalies, "payments.csv", 0, "amount", "x")
+    cleaning.add_anomaly(anomalies, "payments.csv", 3, "amount", "x")
+    assert [a["row_number"] for a in anomalies] == [2, 5]
