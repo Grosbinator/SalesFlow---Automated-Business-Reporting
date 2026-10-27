@@ -153,3 +153,22 @@ def test_running_again_updates_existing_rows(env):
     assert query("SELECT customer_id, country FROM customers") == [
         ("C001", "Belgium")
     ]
+
+
+# ---------------------------------------------------------------------------
+# 4. Intégrité des données
+# ---------------------------------------------------------------------------
+
+def test_payment_with_unknown_subscription_is_rejected(env):
+    """La clé étrangère refuse un paiement lié à un abonnement inexistant,
+    et la transaction annule tout : la base reste vide."""
+    env("payments_clean.csv", make_df(VALID_PAYMENT, {"subscription_id": "S999"}))
+    with pytest.raises(sqlite3.IntegrityError):
+        database.main()
+    assert query("SELECT COUNT(*) FROM customers") == [(0,)]
+
+
+def test_missing_column_raises_clear_error(env):
+    env("customers_clean.csv", make_df(VALID_CUSTOMER).drop(columns=["email"]))
+    with pytest.raises(ValueError, match="email"):
+        database.main()
