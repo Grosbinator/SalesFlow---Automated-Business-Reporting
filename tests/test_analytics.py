@@ -199,3 +199,40 @@ def test_get_connection_requires_existing_database(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_FILE", tmp_path / "absente.db")
     with pytest.raises(FileNotFoundError, match="database.py"):
         analytics.get_connection()
+
+
+# ---------------------------------------------------------------------------
+# 5. Clients et statuts d'abonnement
+# ---------------------------------------------------------------------------
+
+def test_subscriptions_by_status_crosses_plan_and_status(connection):
+    assert analytics.subscriptions_by_status(connection).to_dict("list") == {
+        "plan": ["Pro", "Starter"],
+        "active": [1, 1],
+        "cancelled": [1, 0],
+        "total": [2, 1],
+    }
+
+
+def test_customers_overview_does_not_double_count_payments(connection):
+    """C1 : S1 (29 + 29) + S3 (79) ; la jointure ne doit rien compter deux fois."""
+    customers = analytics.customers_overview(connection).set_index("customer_id")
+    assert customers.loc["C1", "total_paid"] == 29 + 29 + 79
+    assert customers.loc["C1", "subscriptions"] == 2
+    assert set(customers.loc["C1", "active_plans"].split(", ")) == {"Starter", "Pro"}
+    assert customers.loc["C1", "last_payment_date"] == "2026-03-01"
+
+
+def test_customers_overview_keeps_customers_without_subscription(connection):
+    customers = analytics.customers_overview(connection).set_index("customer_id")
+    assert list(customers["is_active"]) == [True, False, False]
+    assert customers.loc["C3", "total_paid"] == 0
+    assert customers.loc["C3", "active_plans"] == ""
+
+
+def test_customers_by_country(connection):
+    assert analytics.customers_by_country(connection).to_dict("list") == {
+        "country": ["France"],
+        "customers": [3],
+        "active_customers": [1],
+    }

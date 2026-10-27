@@ -194,6 +194,93 @@ def subscriptions_by_plan(connection):
     return plans
 
 
+def subscriptions_by_status(connection):
+    """Nombre d'abonnements par formule et par statut (tableau croisé)."""
+    counts = pd.read_sql_query(
+        """
+        SELECT plan, status, COUNT(*) AS subscriptions
+        FROM subscriptions
+        GROUP BY plan, status
+        """,
+        connection,
+    )
+    table = counts.pivot_table(
+        index="plan",
+        columns="status",
+        values="subscriptions",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    table.columns.name = None
+    table["total"] = table.sum(axis=1)
+    return table.reset_index().sort_values(
+        ["total", "plan"], ascending=[False, True], ignore_index=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Clients
+# ---------------------------------------------------------------------------
+
+def customers_overview(connection):
+    """Une ligne par client : abonnements, formules actives, total payé.
+
+    Les paiements sont d'abord agrégés par abonnement (sous-requête) pour
+    éviter de les compter plusieurs fois dans la jointure.
+    """
+    customers = pd.read_sql_query(
+        """
+        SELECT c.customer_id,
+               c.company_name,
+               c.email,
+               c.country,
+               c.signup_date,
+               COUNT(s.subscription_id)                           AS subscriptions,
+               COALESCE(SUM(s.status = ?), 0)                     AS active_subscriptions,
+               GROUP_CONCAT(CASE WHEN s.status = ? THEN s.plan END, ', ')
+                                                                  AS active_plans,
+               COALESCE(SUM(p.paid), 0)                           AS total_paid,
+               MAX(p.last_payment)                                AS last_payment_date
+        FROM customers c
+        LEFT JOIN subscriptions s ON s.customer_id = c.customer_id
+        LEFT JOIN (
+            SELECT subscription_id,
+                   SUM(amount)       AS paid,
+                   MAX(payment_date) AS last_payment
+            FROM payments
+            WHERE status = ?
+            GROUP BY subscription_id
+        ) p ON p.subscription_id = s.subscription_id
+        GROUP BY c.customer_id
+        ORDER BY c.customer_id
+        """,
+        connection,
+        params=(ACTIVE, ACTIVE, SUCCESS),
+    )
+    customers["active_plans"] = customers["active_plans"].fillna("")
+    customers["is_active"] = customers["active_subscriptions"] > 0
+    return customers
+
+
+def customers_by_country(connection):
+    """Nombre de clients et de clients actifs par pays."""
+    return pd.read_sql_query(
+        """
+        SELECT c.country,
+               COUNT(*) AS customers,
+               SUM(EXISTS (
+                   SELECT 1 FROM subscriptions s
+                   WHERE s.customer_id = c.customer_id AND s.status = ?
+               ))       AS active_customers
+        FROM customers c
+        GROUP BY c.country
+        ORDER BY customers DESC, c.country
+        """,
+        connection,
+        params=(ACTIVE,),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Synthèse
 # ---------------------------------------------------------------------------
