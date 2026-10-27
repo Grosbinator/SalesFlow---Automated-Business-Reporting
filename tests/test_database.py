@@ -108,3 +108,27 @@ def test_foreign_keys_are_declared(env):
     assert [(r[2], r[3], r[4]) for r in payment_fk] == [
         ("subscriptions", "subscription_id", "subscription_id")
     ]
+
+
+# ---------------------------------------------------------------------------
+# 2. Insertion et conversion des valeurs
+# ---------------------------------------------------------------------------
+
+def test_values_are_converted_for_sqlite(env):
+    """end_date vide -> NULL, booléens -> 1/0, prix -> nombre."""
+    database.main()
+    assert query(
+        "SELECT monthly_price, end_date, calculation_eligible FROM subscriptions"
+    ) == [(29.0, None, 1)]
+
+
+def test_customer_can_be_joined_to_payments(env):
+    """But de la base : retrouver les paiements d'un client en SQL."""
+    database.main()
+    rows = query("""
+        SELECT c.company_name, s.plan, p.amount
+        FROM customers c
+        JOIN subscriptions s ON s.customer_id = c.customer_id
+        JOIN payments p ON p.subscription_id = s.subscription_id
+    """)
+    assert rows == [("NovaTech", "Starter", 29.0)]
