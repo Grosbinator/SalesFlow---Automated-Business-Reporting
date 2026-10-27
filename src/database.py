@@ -109,3 +109,37 @@ def to_sql_value(value):
     if value in ("True", "False"):
         return int(value == "True")
     return value
+
+
+def upsert(connection, table, df, primary_key):
+    """Insère les lignes de `df` dans `table` ; met à jour celles déjà présentes.
+
+    ON CONFLICT ... DO UPDATE évite les doublons quand le script est relancé.
+    (INSERT OR REPLACE supprimerait puis réinsérerait la ligne, ce qui
+    casserait les clés étrangères des tables enfants.)
+    """
+    columns = table_columns(connection, table)
+
+    missing_columns = set(columns) - set(df.columns)
+    if missing_columns:
+        raise ValueError(
+            f"{table} : colonnes manquantes : {sorted(missing_columns)}"
+        )
+
+    updates = ", ".join(
+        f"{column} = excluded.{column}"
+        for column in columns
+        if column != primary_key
+    )
+    query = (
+        f"INSERT INTO {table} ({', '.join(columns)}) "
+        f"VALUES ({', '.join('?' * len(columns))}) "
+        f"ON CONFLICT ({primary_key}) DO UPDATE SET {updates}"
+    )
+
+    rows = [
+        tuple(to_sql_value(value) for value in row)
+        for row in df[columns].itertuples(index=False)
+    ]
+    connection.executemany(query, rows)
+    return len(rows)
