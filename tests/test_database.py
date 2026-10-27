@@ -172,3 +172,15 @@ def test_missing_column_raises_clear_error(env):
     env("customers_clean.csv", make_df(VALID_CUSTOMER).drop(columns=["email"]))
     with pytest.raises(ValueError, match="email"):
         database.main()
+
+
+def test_rows_removed_from_csv_are_removed_from_database(env):
+    """La base reflète exactement data/processed/ (ex. ligne écartée par la
+    validation) : un paiement retiré du CSV disparaît de la base."""
+    env("payments_clean.csv", make_df(
+        VALID_PAYMENT, {"payment_id": "P001"}, {"payment_id": "P002"},
+    ))
+    database.main()
+    env("payments_clean.csv", make_df(VALID_PAYMENT, {"payment_id": "P001"}))
+    database.main()
+    assert query("SELECT payment_id FROM payments") == [("P001",)]
