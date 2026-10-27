@@ -384,3 +384,36 @@ def build_subscriptions_sheet(sheet, connection, plans):
     autosize_columns(sheet)
     if not plans.empty:
         sheet.add_image(plan_chart(plans), "G3")
+
+
+def build_data_quality_sheet(sheet, anomalies):
+    write_title(
+        sheet,
+        "Data Quality — anomalies détectées",
+        "Source : anomalies/anomalies.csv (python src/cleaning.py). "
+        "Ligne = numéro de ligne dans le CSV d'origine (en-tête = ligne 1).",
+    )
+    if anomalies is None:
+        sheet["A4"] = (
+            "Fichier d'anomalies introuvable : lancer python src/cleaning.py"
+        )
+        sheet["A4"].font = SECTION_FONT
+        return
+
+    anomalies = with_error_type(anomalies)
+    stats = pd.DataFrame(
+        [
+            ("Anomalies détectées", len(anomalies)),
+            ("Fichiers concernés", anomalies["file_name"].nunique()),
+            ("Lignes concernées",
+             len(anomalies[["file_name", "row_number"]].drop_duplicates())),
+        ],
+        columns=["indicator", "value"],
+    )
+    row = write_table(sheet, stats, 4, title="Résumé")
+    row = write_table(sheet, anomalies_by(anomalies, "file_name"), row, title="Par fichier")
+    row = write_table(sheet, anomalies_by(anomalies, "error_type"), row, title="Par type d'erreur")
+    write_table(
+        sheet, anomalies[ANOMALY_COLUMNS], row, title="Détail des anomalies"
+    )
+    autosize_columns(sheet)
