@@ -192,3 +192,41 @@ def subscriptions_by_plan(connection):
         plans["subscriptions"] / plans["subscriptions"].sum() * 100
     ).round(1)
     return plans
+
+
+# ---------------------------------------------------------------------------
+# Synthèse
+# ---------------------------------------------------------------------------
+
+def summary(connection):
+    """Tableau des indicateurs clés pour le dirigeant."""
+    rate = failure_rate(connection)
+    basket = average_basket(connection)
+    rows = [
+        ("Chiffre d'affaires encaissé (€)", round(collected_revenue(connection), 2)),
+        ("Revenu récurrent théorique mensuel (€)", round(current_mrr(connection), 2)),
+        ("Clients actifs", active_customers(connection)),
+        ("Panier moyen (€)", None if basket is None else round(basket, 2)),
+        ("Taux d'échec des paiements (%)", None if rate is None else round(rate * 100, 1)),
+    ]
+    # dtype=object : garde 13 (entier) au lieu de 13.0 pour les clients.
+    return pd.DataFrame(rows, columns=["indicator", "value"], dtype=object)
+
+
+def main():
+    connection = get_connection()
+    try:
+        print("=== Indicateurs clés ===")
+        print(summary(connection).to_string(index=False))
+        print()
+        print("=== Revenu encaissé vs revenu récurrent théorique, par mois ===")
+        print(revenue_comparison(connection).to_string(index=False))
+        print()
+        print("=== Répartition des abonnements par formule ===")
+        print(subscriptions_by_plan(connection).to_string(index=False))
+    finally:
+        connection.close()
+
+
+if __name__ == "__main__":
+    main()
