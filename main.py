@@ -109,3 +109,64 @@ def build_steps(interactive=False, skip_import=False):
         ),
     ]
     return steps[1:] if skip_import else steps
+
+
+# ---------------------------------------------------------------------------
+# Exécution
+# ---------------------------------------------------------------------------
+
+def run_pipeline(steps, show=print):
+    """Exécute les étapes dans l'ordre ; s'arrête à la première erreur.
+
+    Renvoie le code de sortie : 0 si tout a réussi, 1 en cas d'échec,
+    130 si l'utilisateur a interrompu (Ctrl+C).
+    """
+    total = len(steps)
+    started = time.perf_counter()
+
+    for number, (title, action, hint) in enumerate(steps, start=1):
+        show(f"\n=== [{number}/{total}] {title} ===")
+        step_started = time.perf_counter()
+        try:
+            action()
+        except KeyboardInterrupt:
+            show(f"\nInterrompu pendant l'étape {number}/{total} ({title}).")
+            return 130
+        except Exception as error:  # toute erreur arrête proprement la chaîne
+            cause = (
+                str(error) if isinstance(error, PipelineError)
+                else f"{type(error).__name__} : {error}"
+            )
+            show(f"\nÉCHEC à l'étape {number}/{total} ({title})")
+            show(f"  Cause : {cause}")
+            if hint:
+                show(f"  Piste : {hint}")
+            show("Pipeline arrêté : les étapes suivantes n'ont pas été lancées "
+                 "et le rapport n'a pas été mis à jour.")
+            return 1
+        show(f"-> OK ({time.perf_counter() - step_started:.1f} s)")
+
+    show(f"\nPipeline terminé en {time.perf_counter() - started:.1f} s. "
+         f"Rapport : {report.REPORT_FILE}")
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="SalesFlow : import, nettoyage, base SQLite, "
+                    "indicateurs et rapport Excel."
+    )
+    parser.add_argument(
+        "--interactive", action="store_true",
+        help="traiter les anomalies une par une dans la console",
+    )
+    parser.add_argument(
+        "--skip-import", action="store_true",
+        help="ne pas importer depuis Téléchargements, réutiliser data/raw/",
+    )
+    args = parser.parse_args(argv)
+    return run_pipeline(build_steps(args.interactive, args.skip_import))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
