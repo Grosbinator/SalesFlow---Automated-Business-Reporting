@@ -218,3 +218,51 @@ def review(frames, ask=input, show=print, kept=None):
             frames[name].at[index, column] = new_value
             log.append(log_entry(anomaly, "valeur modifiée", old_value, new_value))
             show(f"  -> {column} : {old_value or '(vide)'} -> {new_value or '(vide)'}")
+
+
+def load_journal():
+    """Lit anomalies/corrections.csv (liste vide s'il n'existe pas encore)."""
+    if not CORRECTIONS_FILE.exists():
+        return []
+    journal = pd.read_csv(
+        CORRECTIONS_FILE, dtype=str, keep_default_na=False, encoding="utf-8-sig"
+    )
+    return journal.to_dict("records")
+
+
+def replay(frames, journal):
+    """Réapplique les décisions des sessions précédentes.
+
+    Une décision n'est rejouée que si la même anomalie (fichier, ligne,
+    colonne, message) est encore présente et, pour une modification, si la
+    valeur d'origine n'a pas changé : un CSV brut réimporté et différent ne
+    reçoit pas de corrections qui ne le concernent pas.
+    Renvoie (anomalies gardées, nombre de décisions réappliquées).
+    """
+    kept = set()
+    applied = 0
+    for entry in journal:
+        row_number = int(entry["row_number"])
+        key = (
+            entry["file_name"], row_number,
+            entry["column_name"], entry["error_message"],
+        )
+        if key not in {anomaly_key(a) for a in run_checks(frames)}:
+            continue
+
+        name, column = entry["file_name"], entry["column_name"]
+        index = row_number - 2
+        action = entry["action"]
+        if action == "ligne supprimée":
+            frames[name] = frames[name].drop(index)
+        elif action == "gardée telle quelle":
+            kept.add(key)
+        elif (
+            action == "valeur modifiée"
+            and frames[name].at[index, column] == entry["old_value"]
+        ):
+            frames[name].at[index, column] = entry["new_value"]
+        else:
+            continue
+        applied += 1
+    return kept, applied
