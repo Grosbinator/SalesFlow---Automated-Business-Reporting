@@ -109,3 +109,42 @@ def monthly_revenue(connection):
         connection,
         params=(SUCCESS,),
     )
+
+
+def monthly_recurring_revenue(connection):
+    """Revenu récurrent théorique par mois.
+
+    Un abonnement compte pour un mois s'il a commencé avant la fin du mois
+    et n'est pas terminé avant son début (end_date NULL = en cours). Les mois
+    vont du premier début d'abonnement à la dernière date connue.
+    """
+    return pd.read_sql_query(
+        """
+        WITH RECURSIVE months (month_start) AS (
+            SELECT date(MIN(start_date), 'start of month')
+            FROM subscriptions
+            HAVING MIN(start_date) IS NOT NULL
+            UNION ALL
+            SELECT date(month_start, '+1 month')
+            FROM months
+            WHERE month_start < (
+                SELECT date(MAX(day), 'start of month')
+                FROM (
+                    SELECT payment_date AS day FROM payments
+                    UNION ALL
+                    SELECT start_date FROM subscriptions
+                )
+            )
+        )
+        SELECT strftime('%Y-%m', m.month_start)        AS month,
+               COALESCE(SUM(s.monthly_price), 0)        AS recurring_revenue,
+               COUNT(s.subscription_id)                 AS running_subscriptions
+        FROM months m
+        LEFT JOIN subscriptions s
+               ON s.start_date <= date(m.month_start, '+1 month', '-1 day')
+              AND (s.end_date IS NULL OR s.end_date >= m.month_start)
+        GROUP BY m.month_start
+        ORDER BY m.month_start
+        """,
+        connection,
+    )
