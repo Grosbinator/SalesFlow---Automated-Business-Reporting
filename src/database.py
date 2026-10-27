@@ -145,6 +145,21 @@ def upsert(connection, table, df, primary_key):
     return len(rows)
 
 
+def delete_missing(connection, table, df, primary_key):
+    """Supprime de la base les lignes absentes du CSV (ex. ligne écartée par
+    la validation), pour que la base reflète exactement data/processed/."""
+    keys = set(df[primary_key])
+    removed = [
+        (key,)
+        for (key,) in connection.execute(f"SELECT {primary_key} FROM {table}")
+        if key not in keys
+    ]
+    connection.executemany(
+        f"DELETE FROM {table} WHERE {primary_key} = ?", removed
+    )
+    return len(removed)
+
+
 def count_rows(connection, table):
     return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
