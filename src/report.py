@@ -96,3 +96,98 @@ LABELS = {
     "anomalies": "Anomalies",
 }
 EURO_COLUMNS = {"recurring_revenue", "collected_revenue", "gap", "total_paid"}
+
+
+# ---------------------------------------------------------------------------
+# Outils d'écriture dans les feuilles
+# ---------------------------------------------------------------------------
+
+def to_excel_value(value):
+    """Convertit une valeur pandas/numpy en valeur que openpyxl sait écrire."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if hasattr(value, "item"):  # types numpy -> types Python
+        value = value.item()
+    if isinstance(value, bool):
+        return "Oui" if value else "Non"
+    return value
+
+
+def write_title(sheet, title, subtitle=None):
+    sheet["A1"] = title
+    sheet["A1"].font = TITLE_FONT
+    if subtitle:
+        sheet["A2"] = subtitle
+        sheet["A2"].font = SUBTITLE_FONT
+
+
+def write_table(sheet, df, row, column=1, title=None, formats=None):
+    """Écrit un DataFrame sous forme de tableau mis en forme.
+
+    `formats` associe un nom de colonne à un format de nombre Excel (les
+    colonnes en euros sont formatées automatiquement). Renvoie la première
+    ligne libre sous le tableau.
+    """
+    formats = {**{name: EURO for name in EURO_COLUMNS}, **(formats or {})}
+
+    if title:
+        sheet.cell(row, column, title).font = SECTION_FONT
+        row += 1
+
+    for offset, name in enumerate(df.columns):
+        cell = sheet.cell(row, column + offset, LABELS.get(name, name))
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+        cell.border = BORDER
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for line, values in enumerate(df.itertuples(index=False), start=1):
+        for offset, (name, value) in enumerate(zip(df.columns, values)):
+            cell = sheet.cell(row + line, column + offset, to_excel_value(value))
+            cell.border = BORDER
+            if name in formats:
+                cell.number_format = formats[name]
+            if line % 2 == 0:
+                cell.fill = ZEBRA_FILL
+
+    if df.empty:
+        sheet.cell(row + 1, column, "Aucune donnée").font = SUBTITLE_FONT
+
+    return row + max(len(df), 1) + 2
+
+
+def write_kpi(sheet, row, column, label, value, number_format):
+    """Écrit une tuile KPI sur deux colonnes : libellé puis valeur."""
+    for line in (row, row + 1):
+        sheet.merge_cells(
+            start_row=line, start_column=column,
+            end_row=line, end_column=column + 1,
+        )
+        for offset in (0, 1):
+            cell = sheet.cell(line, column + offset)
+            cell.fill = TILE_FILL
+            cell.border = BORDER
+
+    label_cell = sheet.cell(row, column, label)
+    label_cell.font = Font(size=10, color="52514E")
+    label_cell.alignment = Alignment(horizontal="center")
+
+    value_cell = sheet.cell(row + 1, column, "n/d" if value is None else value)
+    value_cell.font = Font(size=18, bold=True, color="1F3A5F")
+    value_cell.alignment = Alignment(horizontal="center", vertical="center")
+    value_cell.number_format = number_format
+    sheet.row_dimensions[row + 1].height = 32
+
+
+def autosize_columns(sheet, minimum=10, maximum=45):
+    """Ajuste la largeur des colonnes au contenu des tableaux (cellules bordées)."""
+    widths = {}
+    for row in sheet.iter_rows():
+        for cell in row:
+            if cell.value is None or cell.border.left.style is None:
+                continue
+            length = len(str(cell.value))
+            widths[cell.column] = max(widths.get(cell.column, 0), length)
+    for column, length in widths.items():
+        width = min(max(length + 2, minimum), maximum)
+        sheet.column_dimensions[get_column_letter(column)].width = width
