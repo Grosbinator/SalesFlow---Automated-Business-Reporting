@@ -160,3 +160,24 @@ def test_revenue_comparison_keeps_months_without_payment(connection):
     april = comparison[comparison["month"] == "2026-04"].iloc[0]
     assert april["collected_revenue"] == 0
     assert april["recurring_revenue"] == 29 + 79
+
+
+# ---------------------------------------------------------------------------
+# 3. Répartition par formule et synthèse
+# ---------------------------------------------------------------------------
+
+def test_subscriptions_by_plan(connection):
+    plans = analytics.subscriptions_by_plan(connection)
+    assert plans.to_dict("list") == {
+        "plan": ["Pro", "Starter"],
+        "subscriptions": [2, 1],
+        "active_subscriptions": [1, 1],
+        "share_pct": [66.7, 33.3],
+    }
+
+
+def test_summary_lists_the_key_indicators(connection):
+    values = dict(analytics.summary(connection).values)
+    assert values["Chiffre d'affaires encaissé (€)"] == 216
+    assert values["Clients actifs"] == 1
+    assert values["Taux d'échec des paiements (%)"] == 20.0
