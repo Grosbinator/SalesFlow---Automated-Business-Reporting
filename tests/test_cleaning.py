@@ -78,3 +78,73 @@ def test_row_number_matches_line_in_csv_file():
     cleaning.add_anomaly(anomalies, "payments.csv", 0, "amount", "x")
     cleaning.add_anomaly(anomalies, "payments.csv", 3, "amount", "x")
     assert [a["row_number"] for a in anomalies] == [2, 5]
+
+
+# ---------------------------------------------------------------------------
+# 2. Contrôles génériques
+# ---------------------------------------------------------------------------
+
+def test_check_missing_flags_empty_cells_only():
+    df = make_df(VALID_CUSTOMER, {}, {"company_name": ""})
+    anomalies = []
+    cleaning.check_missing(anomalies, "customers.csv", df, "company_name")
+    assert found(anomalies) == {("customers.csv", 3, "company_name")}
+
+
+def test_check_duplicates_flags_every_occurrence():
+    """Les deux lignes en double sont signalées, pas seulement la 2e :
+    on ne sait pas laquelle est la bonne."""
+    df = make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001"},
+        {"payment_id": "P002"},
+        {"payment_id": "P001"},
+    )
+    anomalies = []
+    cleaning.check_duplicates(anomalies, "payments.csv", df, "payment_id")
+    assert found(anomalies) == {
+        ("payments.csv", 2, "payment_id"),
+        ("payments.csv", 4, "payment_id"),
+    }
+
+
+def test_check_duplicates_ignores_empty_ids():
+    """Deux identifiants vides ne sont pas des « doublons » : ils sont déjà
+    signalés comme valeurs manquantes, inutile de les compter deux fois."""
+    df = make_df(VALID_PAYMENT, {"payment_id": ""}, {"payment_id": ""})
+    anomalies = []
+    cleaning.check_duplicates(anomalies, "payments.csv", df, "payment_id")
+    assert anomalies == []
+
+
+@pytest.mark.parametrize("bad_date", ["2026-13-40", "2026-02-30", "12/01/2026", "abc"])
+def test_check_dates_flags_invalid_dates(bad_date):
+    df = make_df(VALID_PAYMENT, {"payment_date": bad_date})
+    anomalies = []
+    cleaning.check_dates(anomalies, "payments.csv", df, "payment_date")
+    assert found(anomalies) == {("payments.csv", 2, "payment_date")}
+
+
+def test_check_dates_accepts_valid_and_empty_dates():
+    """Une date vide n'est pas « invalide » ici (c'est check_missing qui
+    décide si le vide est permis) ; une date correcte passe."""
+    df = make_df(VALID_PAYMENT, {}, {"payment_date": ""})
+    anomalies = []
+    cleaning.check_dates(anomalies, "payments.csv", df, "payment_date")
+    assert anomalies == []
+
+
+def test_check_numbers_flags_non_numeric_and_negative():
+    df = make_df(
+        VALID_PAYMENT,
+        {"amount": "49.5"},   # ok
+        {"amount": "abc"},    # non numérique
+        {"amount": "-29.0"},  # négatif
+        {"amount": "0"},      # zéro : accepté
+    )
+    anomalies = []
+    cleaning.check_numbers(anomalies, "payments.csv", df, "amount", "Montant")
+    assert found(anomalies) == {
+        ("payments.csv", 3, "amount"),
+        ("payments.csv", 4, "amount"),
+    }
