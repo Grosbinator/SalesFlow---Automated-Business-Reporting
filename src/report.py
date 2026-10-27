@@ -433,3 +433,34 @@ def build_report(connection, anomalies):
     build_subscriptions_sheet(workbook.create_sheet("Subscriptions"), connection, plans)
     build_data_quality_sheet(workbook.create_sheet("Data Quality"), anomalies)
     return workbook
+
+
+def main():
+    connection = analytics.get_connection()
+    try:
+        workbook = build_report(connection, load_anomalies())
+    finally:
+        connection.close()
+
+    save_report(workbook)
+    print(f"Rapport généré : {REPORT_FILE}")
+
+
+def save_report(workbook):
+    """Enregistre le classeur sans jamais laisser de fichier à moitié écrit :
+    écriture dans un fichier temporaire, puis remplacement de l'ancien."""
+    REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = REPORT_FILE.with_name(f"~{REPORT_FILE.name}")
+    try:
+        workbook.save(temporary)
+        temporary.replace(REPORT_FILE)
+    except PermissionError as error:
+        temporary.unlink(missing_ok=True)
+        raise PermissionError(
+            f"Impossible d'écrire {REPORT_FILE} : "
+            "le fichier est peut-être ouvert dans Excel."
+        ) from error
+
+
+if __name__ == "__main__":
+    main()
