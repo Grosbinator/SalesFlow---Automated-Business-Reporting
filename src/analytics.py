@@ -148,3 +148,27 @@ def monthly_recurring_revenue(connection):
         """,
         connection,
     )
+
+
+def revenue_comparison(connection):
+    """Compare, mois par mois, le revenu encaissé au revenu récurrent théorique."""
+    recurring = monthly_recurring_revenue(connection)
+    collected = monthly_revenue(connection)
+
+    comparison = recurring.merge(collected, on="month", how="outer")
+    comparison = comparison.fillna(0).sort_values("month", ignore_index=True)
+    for column in ("running_subscriptions", "successful_payments"):
+        comparison[column] = comparison[column].astype(int)
+
+    # Écart négatif : on a encaissé moins que ce que les abonnements prévoient.
+    comparison["gap"] = (
+        comparison["collected_revenue"] - comparison["recurring_revenue"]
+    )
+    return comparison[[
+        "month",
+        "recurring_revenue",
+        "collected_revenue",
+        "gap",
+        "running_subscriptions",
+        "successful_payments",
+    ]]
