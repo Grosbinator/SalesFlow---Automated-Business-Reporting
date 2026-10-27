@@ -266,3 +266,21 @@ def replay(frames, journal):
             continue
         applied += 1
     return kept, applied
+
+
+def exclude_unresolved(frames, kept):
+    """Écarte les lignes qui ont encore une anomalie non acceptée.
+
+    Répété jusqu'à stabilité : écarter un client peut rendre invalides ses
+    abonnements, qui sont alors écartés à leur tour. Renvoie le journal.
+    """
+    log = []
+    while True:
+        pending = [a for a in run_checks(frames) if anomaly_key(a) not in kept]
+        if not pending:
+            return log
+        for anomaly in pending:
+            name, index = anomaly["file_name"], row_index(anomaly)
+            if index in frames[name].index:
+                frames[name] = frames[name].drop(index)
+            log.append(log_entry(anomaly, "ligne écartée (non traitée)"))
