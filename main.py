@@ -33,3 +33,49 @@ import validation  # noqa: E402
 
 class PipelineError(Exception):
     """Erreur bloquante détectée par le pipeline lui-même."""
+
+
+# ---------------------------------------------------------------------------
+# Étapes
+# ---------------------------------------------------------------------------
+
+def step_import():
+    import_data.import_csv_files()
+
+
+def step_clean_and_validate(interactive):
+    cleaning.main()
+    print()
+    if interactive:
+        if not validation.main():
+            raise PipelineError(
+                "validation non enregistrée : data/processed/ n'a pas été "
+                "mis à jour."
+            )
+    else:
+        validation.auto_validate()
+
+
+def step_load():
+    database.main()
+    connection = analytics.get_connection()
+    try:
+        empty = [
+            table for table in database.TABLES
+            if database.count_rows(connection, table) == 0
+        ]
+    finally:
+        connection.close()
+    if empty:
+        raise PipelineError(
+            f"aucune donnée exploitable dans : {', '.join(empty)}. "
+            "Le rapport serait vide."
+        )
+
+
+def step_indicators():
+    analytics.main()
+
+
+def step_report():
+    report.main()
