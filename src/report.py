@@ -191,3 +191,78 @@ def autosize_columns(sheet, minimum=10, maximum=45):
     for column, length in widths.items():
         width = min(max(length + 2, minimum), maximum)
         sheet.column_dimensions[get_column_letter(column)].width = width
+
+
+# ---------------------------------------------------------------------------
+# Graphiques (matplotlib -> image PNG insérée dans Excel)
+# ---------------------------------------------------------------------------
+
+def euro_axis(value, _position):
+    return f"{value:,.0f} €".replace(",", " ")
+
+
+def style_axes(ax, title):
+    ax.set_title(title, loc="left", fontsize=11, color=INK, pad=12)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(GRID)
+    ax.tick_params(colors=INK_MUTED, labelsize=8, length=0)
+    ax.set_axisbelow(True)
+
+
+def to_image(figure, width_px):
+    """Convertit une figure matplotlib en image openpyxl de largeur donnée."""
+    buffer = BytesIO()
+    figure.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+    plt.close(figure)
+    buffer.seek(0)
+    image = Image(buffer)
+    image.height = image.height * width_px / image.width
+    image.width = width_px
+    return image
+
+
+def revenue_chart(comparison, width_px=620):
+    """Barres : revenu encaissé ; ligne : revenu récurrent théorique."""
+    figure, ax = plt.subplots(figsize=(8, 3.8))
+    positions = range(len(comparison))
+    ax.bar(
+        positions, comparison["collected_revenue"], width=0.6,
+        color=BLUE, label="Revenu encaissé",
+    )
+    ax.plot(
+        positions, comparison["recurring_revenue"], color=ORANGE,
+        linewidth=2, marker="o", markersize=5,
+        label="Revenu récurrent théorique",
+    )
+    ax.set_xticks(list(positions), comparison["month"], rotation=45, ha="right")
+    ax.yaxis.set_major_formatter(FuncFormatter(euro_axis))
+    ax.grid(axis="y", color=GRID, linewidth=0.8)
+    ax.legend(loc="upper left", frameon=False, fontsize=8, labelcolor=INK_MUTED)
+    style_axes(ax, "Revenu encaissé vs revenu récurrent théorique, par mois")
+    return to_image(figure, width_px)
+
+
+def collected_chart(monthly, width_px=560):
+    """Évolution du revenu encaissé (paiements réussis) par mois."""
+    figure, ax = plt.subplots(figsize=(7, 3.6))
+    positions = range(len(monthly))
+    ax.bar(positions, monthly["collected_revenue"], width=0.6, color=BLUE)
+    ax.set_xticks(list(positions), monthly["month"], rotation=45, ha="right")
+    ax.yaxis.set_major_formatter(FuncFormatter(euro_axis))
+    ax.grid(axis="y", color=GRID, linewidth=0.8)
+    style_axes(ax, "Revenu encaissé par mois (paiements réussis)")
+    return to_image(figure, width_px)
+
+
+def plan_chart(plans, width_px=420):
+    """Nombre d'abonnements par formule (barres horizontales)."""
+    figure, ax = plt.subplots(figsize=(5, 2.8))
+    ordered = plans.iloc[::-1]  # la formule la plus fréquente en haut
+    bars = ax.barh(ordered["plan"], ordered["subscriptions"], height=0.6, color=BLUE)
+    ax.bar_label(bars, padding=4, fontsize=8, color=INK)
+    ax.xaxis.set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    style_axes(ax, "Abonnements par formule")
+    return to_image(figure, width_px)
