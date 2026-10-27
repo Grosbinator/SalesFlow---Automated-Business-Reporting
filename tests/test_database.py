@@ -132,3 +132,24 @@ def test_customer_can_be_joined_to_payments(env):
         JOIN payments p ON p.subscription_id = s.subscription_id
     """)
     assert rows == [("NovaTech", "Starter", 29.0)]
+
+
+# ---------------------------------------------------------------------------
+# 3. Relancer le script ne crée pas de doublons
+# ---------------------------------------------------------------------------
+
+def test_running_twice_creates_no_duplicates(env):
+    database.main()
+    database.main()
+    for table in database.TABLES:
+        assert query(f"SELECT COUNT(*) FROM {table}") == [(1,)]
+
+
+def test_running_again_updates_existing_rows(env):
+    """Une ligne modifiée dans le CSV est mise à jour, pas ajoutée."""
+    database.main()
+    env("customers_clean.csv", make_df(VALID_CUSTOMER, {"country": "Belgium"}))
+    database.main()
+    assert query("SELECT customer_id, country FROM customers") == [
+        ("C001", "Belgium")
+    ]
