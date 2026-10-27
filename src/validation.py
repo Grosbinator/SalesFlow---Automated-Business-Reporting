@@ -153,3 +153,68 @@ def ask_new_value(ask, column, old_value):
     if ask_yes_no(ask, "Vider la cellule ? (sinon : annuler)"):
         return ""
     return None
+
+
+# ---------------------------------------------------------------------------
+# Revue des anomalies
+# ---------------------------------------------------------------------------
+
+def log_entry(anomaly, action, old_value="", new_value=""):
+    return {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        **anomaly,
+        "action": action,
+        "old_value": old_value,
+        "new_value": new_value,
+    }
+
+
+def review(frames, ask=input, show=print, kept=None):
+    """Propose les anomalies une par une et applique les décisions.
+
+    `frames` est modifié sur place. `kept` : anomalies déjà acceptées (ex.
+    réappliquées depuis le journal). Renvoie (journal, anomalies gardées,
+    True si toutes les anomalies ont été traitées, False si on a quitté).
+    `ask` et `show` remplacent input/print dans les tests.
+    """
+    log = []
+    kept = set() if kept is None else kept
+
+    while True:
+        pending = [a for a in run_checks(frames) if anomaly_key(a) not in kept]
+        if not pending:
+            return log, kept, True
+
+        anomaly = pending[0]
+        name, column = anomaly["file_name"], anomaly["column_name"]
+        index = row_index(anomaly)
+        show(describe(anomaly, frames, len(pending)))
+
+        choices = {"m": "Modifier la valeur", "s": "Supprimer la ligne"}
+        if can_keep(anomaly):
+            choices["g"] = "Garder tel quel"
+        choices["q"] = "Quitter"
+        action = ask_choice(ask, "Votre choix :", choices)
+
+        if action == "q":
+            return log, kept, False
+
+        if action == "s":
+            frames[name] = frames[name].drop(index)
+            log.append(log_entry(anomaly, "ligne supprimée"))
+            show("  -> Ligne supprimée.")
+
+        elif action == "g":
+            kept.add(anomaly_key(anomaly))
+            log.append(log_entry(anomaly, "gardée telle quelle"))
+            show("  -> Valeur gardée.")
+
+        else:
+            old_value = frames[name].at[index, column]
+            new_value = ask_new_value(ask, column, old_value)
+            if new_value is None:
+                show("  -> Modification annulée.")
+                continue
+            frames[name].at[index, column] = new_value
+            log.append(log_entry(anomaly, "valeur modifiée", old_value, new_value))
+            show(f"  -> {column} : {old_value or '(vide)'} -> {new_value or '(vide)'}")
