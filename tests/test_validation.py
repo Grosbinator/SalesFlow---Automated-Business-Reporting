@@ -249,3 +249,59 @@ def test_journal_is_replayed_and_appended_between_sessions(output, monkeypatch):
     assert list(journal["new_value"]) == ["1", "card"]
     saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
     assert (saved.at[0, "amount"], saved.at[0, "payment_method"]) == ("1", "card")
+
+
+# ---------------------------------------------------------------------------
+# 4. Journal réappliqué et validation automatique (main.py)
+# ---------------------------------------------------------------------------
+
+def journal_entry(row_number, column, message, action, old="", new=""):
+    return {
+        "date": "2026-10-27 10:00:00", "file_name": "payments.csv",
+        "row_number": str(row_number), "column_name": column,
+        "error_message": message, "action": action,
+        "old_value": old, "new_value": new,
+    }
+
+
+def test_replay_applies_previous_decisions():
+    payments = make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001", "amount": ""},
+        {"payment_id": "P002", "amount": "-5"},
+        {"payment_id": "P003", "subscription_id": "S999"},
+    )
+    frames = make_frames(payments=payments)
+    journal = [
+        journal_entry(2, "amount", "Valeur manquante", "valeur modifiée", "", "29.0"),
+        journal_entry(3, "amount", "Montant négatif : -5", "gardée telle quelle"),
+        journal_entry(4, "subscription_id",
+                      "subscription_id inexistant dans subscriptions.csv : S999",
+                      "ligne supprimée"),
+    ]
+    kept, applied = validation.replay(frames, journal)
+    assert applied == 3
+    assert list(frames["payments.csv"]["amount"]) == ["29.0", "-5"]
+    remaining = [a for a in validation.run_checks(frames)
+                 if validation.anomaly_key(a) not in kept]
+    assert remaining == []
+
+
+def test_replay_ignores_decisions_that_no_longer_match():
+    """CSV réimporté différent : l'anomalie a changé, la décision n'est pas rejouée."""
+    frames = make_frames(payments=make_df(VALID_PAYMENT, {"amount": "abc"}))
+    journal = [journal_entry(2, "amount", "Valeur manquante", "valeur modifiée", "", "29.0")]
+    assert validation.replay(frames, journal) == (set(), 0)
+    assert frames["payments.csv"].at[0, "amount"] == "abc"
+
+
+def test_auto_validate_excludes_unresolved_rows(output, monkeypatch):
+    payments = make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001"},
+        {"payment_id": "P002", "subscription_id": "S999"},
+    )
+    monkeypatch.setattr(validation, "load_frames", lambda: make_frames(payments=payments))
+    validation.auto_validate(show=Console())
+    saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
+    assert list(saved["payment_id"]) == ["P001"]
