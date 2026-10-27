@@ -81,3 +81,31 @@ def get_connection():
 def create_tables(connection):
     """Crée les tables et index s'ils n'existent pas encore."""
     connection.executescript(SCHEMA)
+
+
+def table_columns(connection, table):
+    """Renvoie la liste des colonnes d'une table, dans l'ordre du schéma."""
+    return [row[1] for row in connection.execute(f"PRAGMA table_info({table})")]
+
+
+def load_processed(filename):
+    """Charge un CSV nettoyé, tout en texte (une cellule vide vaut "")."""
+    path = PROCESSED_DIR / filename
+
+    if not path.exists():
+        raise FileNotFoundError(f"Fichier introuvable : {path}")
+
+    return pd.read_csv(path, dtype=str, keep_default_na=False)
+
+
+def to_sql_value(value):
+    """Convertit une valeur texte du CSV pour SQLite.
+
+    "" devient NULL et "True"/"False" deviennent 1/0. Les nombres restent
+    en texte : SQLite les convertit lui-même grâce au type REAL de la colonne.
+    """
+    if value == "":
+        return None
+    if value in ("True", "False"):
+        return int(value == "True")
+    return value
