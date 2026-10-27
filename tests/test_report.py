@@ -133,3 +133,34 @@ def test_data_quality_summarises_anomalies(connection):
     ]
     assert find_table(sheet, "Par type d'erreur")[0] == ("Identifiant dupliqué", 2)
     assert len(find_table(sheet, "Détail des anomalies")) == 4
+
+
+# ---------------------------------------------------------------------------
+# 3. Cas limites
+# ---------------------------------------------------------------------------
+
+def test_missing_anomalies_file_is_reported(connection):
+    """Sans anomalies.csv, le rapport est quand même généré avec un message."""
+    workbook = report.build_report(connection, None)
+    assert "cleaning.py" in workbook["Data Quality"]["A4"].value
+    assert workbook["Dashboard"].cell(5, 11).value == "n/d"
+
+
+def test_load_anomalies_returns_none_when_file_is_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(report, "ANOMALIES_FILE", tmp_path / "absent.csv")
+    assert report.load_anomalies() is None
+
+
+def test_empty_database_still_builds_a_report():
+    connection = new_connection()
+    try:
+        workbook = report.build_report(connection, ANOMALIES.iloc[0:0])
+    finally:
+        connection.close()
+    assert workbook["Dashboard"].cell(5, 1).value == 0
+    assert workbook["Dashboard"]._images == []
+
+
+def test_to_excel_value_converts_booleans_and_missing_values():
+    assert report.to_excel_value(True) == "Oui"
+    assert report.to_excel_value(float("nan")) is None
