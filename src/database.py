@@ -145,6 +145,21 @@ def upsert(connection, table, df, primary_key):
     return len(rows)
 
 
+def delete_missing(connection, table, df, primary_key):
+    """Supprime de la base les lignes absentes du CSV (ex. ligne écartée par
+    la validation), pour que la base reflète exactement data/processed/."""
+    keys = set(df[primary_key])
+    removed = [
+        (key,)
+        for (key,) in connection.execute(f"SELECT {primary_key} FROM {table}")
+        if key not in keys
+    ]
+    connection.executemany(
+        f"DELETE FROM {table} WHERE {primary_key} = ?", removed
+    )
+    return len(removed)
+
+
 def count_rows(connection, table):
     return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
@@ -153,13 +168,22 @@ def main():
     connection = get_connection()
     try:
         create_tables(connection)
+        frames = {
+            table: load_processed(filename)
+            for table, (filename, _) in TABLES.items()
+        }
 
         # Une seule transaction : si une ligne est refusée (clé étrangère
         # invalide, valeur manquante...), rien n'est enregistré.
         with connection:
+            # Suppressions des enfants vers les parents, puis insertions
+            # des parents vers les enfants : les clés étrangères restent valides.
+            for table, (_, primary_key) in reversed(TABLES.items()):
+                removed = delete_missing(connection, table, frames[table], primary_key)
+                if removed:
+                    print(f"{table} : {removed} ligne(s) absente(s) du CSV supprimée(s)")
             for table, (filename, primary_key) in TABLES.items():
-                df = load_processed(filename)
-                inserted = upsert(connection, table, df, primary_key)
+                inserted = upsert(connection, table, frames[table], primary_key)
                 print(f"{table} : {inserted} ligne(s) chargée(s) depuis {filename}")
 
         print(f"Base à jour : {DB_FILE}")
