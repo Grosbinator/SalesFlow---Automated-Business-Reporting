@@ -189,3 +189,44 @@ def test_payment_with_unknown_subscription_is_reported():
     payments = make_df(VALID_PAYMENT, {"subscription_id": "S999"})
     anomalies = cleaning.check_payments(payments, subscriptions)
     assert found(anomalies) == {("payments.csv", 2, "subscription_id")}
+
+
+# ---------------------------------------------------------------------------
+# 4. Règles propres à chaque fichier
+# ---------------------------------------------------------------------------
+
+def test_check_customers_flags_invalid_email():
+    customers = make_df(
+        VALID_CUSTOMER,
+        {"customer_id": "C001"},
+        {"customer_id": "C002", "email": "pas-un-email"},
+    )
+    anomalies = cleaning.check_customers(customers)
+    assert found(anomalies) == {("customers.csv", 3, "email")}
+
+
+def test_subscription_end_date_is_optional():
+    """Un abonnement en cours n'a pas de date de fin : ce n'est pas une erreur."""
+    customers = make_df(VALID_CUSTOMER)
+    subscriptions = make_df(VALID_SUBSCRIPTION, {"end_date": ""})
+    assert cleaning.check_subscriptions(subscriptions, customers) == []
+
+
+def test_subscription_end_date_before_start_date_is_reported():
+    customers = make_df(VALID_CUSTOMER)
+    subscriptions = make_df(
+        VALID_SUBSCRIPTION,
+        {"start_date": "2026-05-01", "end_date": "2026-01-01"},
+    )
+    anomalies = cleaning.check_subscriptions(subscriptions, customers)
+    assert found(anomalies) == {("subscriptions.csv", 2, "end_date")}
+
+
+def test_payment_with_missing_amount_is_reported_once():
+    """Un montant vide est signalé « manquant » uniquement (pas aussi
+    « non numérique »), pour éviter les doublons dans le rapport."""
+    subscriptions = make_df(VALID_SUBSCRIPTION)
+    payments = make_df(VALID_PAYMENT, {"amount": ""})
+    anomalies = cleaning.check_payments(payments, subscriptions)
+    assert len(anomalies) == 1
+    assert anomalies[0]["error_message"] == "Valeur manquante"
