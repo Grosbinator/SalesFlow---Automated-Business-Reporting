@@ -194,6 +194,30 @@ def subscriptions_by_plan(connection):
     return plans
 
 
+def subscriptions_by_status(connection):
+    """Nombre d'abonnements par formule et par statut (tableau croisé)."""
+    counts = pd.read_sql_query(
+        """
+        SELECT plan, status, COUNT(*) AS subscriptions
+        FROM subscriptions
+        GROUP BY plan, status
+        """,
+        connection,
+    )
+    table = counts.pivot_table(
+        index="plan",
+        columns="status",
+        values="subscriptions",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    table.columns.name = None
+    table["total"] = table.sum(axis=1)
+    return table.reset_index().sort_values(
+        ["total", "plan"], ascending=[False, True], ignore_index=True
+    )
+
+
 # ---------------------------------------------------------------------------
 # Synthèse
 # ---------------------------------------------------------------------------
