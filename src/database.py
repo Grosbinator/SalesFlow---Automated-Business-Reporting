@@ -143,3 +143,31 @@ def upsert(connection, table, df, primary_key):
     ]
     connection.executemany(query, rows)
     return len(rows)
+
+
+def count_rows(connection, table):
+    return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+
+def main():
+    connection = get_connection()
+    try:
+        create_tables(connection)
+
+        # Une seule transaction : si une ligne est refusée (clé étrangère
+        # invalide, valeur manquante...), rien n'est enregistré.
+        with connection:
+            for table, (filename, primary_key) in TABLES.items():
+                df = load_processed(filename)
+                inserted = upsert(connection, table, df, primary_key)
+                print(f"{table} : {inserted} ligne(s) chargée(s) depuis {filename}")
+
+        print(f"Base à jour : {DB_FILE}")
+        for table in TABLES:
+            print(f"  {table} : {count_rows(connection, table)} ligne(s)")
+    finally:
+        connection.close()
+
+
+if __name__ == "__main__":
+    main()
