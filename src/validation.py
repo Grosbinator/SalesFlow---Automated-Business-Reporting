@@ -318,3 +318,65 @@ def save(frames, log):
         index=False,
         encoding="utf-8-sig" if is_new else "utf-8",
     )
+
+
+def show_counts(frames, show):
+    for name, df in frames.items():
+        show(f"  {name} : {len(df)} ligne(s) conservée(s)")
+
+
+def auto_validate(show=print):
+    """Validation sans console (utilisée par main.py).
+
+    Réapplique les décisions du journal, écarte les lignes encore en
+    anomalie, puis enregistre data/processed/. Renvoie les données.
+    """
+    frames = load_frames()
+    kept, applied = replay(frames, load_journal())
+    excluded = exclude_unresolved(frames, kept)
+    save(frames, [])
+
+    show(f"{applied} décision(s) du journal réappliquée(s).")
+    show(f"{len(excluded)} anomalie(s) non traitée(s) : lignes écartées "
+         "(python src/validation.py pour les traiter une par une).")
+    show_counts(frames, show)
+    return frames
+
+
+def main(ask=input, show=print):
+    """Console de validation. Renvoie True si les données ont été enregistrées."""
+    frames = load_frames()
+    show("Validation des anomalies (data/raw/ n'est jamais modifié).")
+    kept, applied = replay(frames, load_journal())
+    if applied:
+        show(f"{applied} décision(s) des sessions précédentes réappliquée(s).")
+
+    try:
+        log, kept, completed = review(frames, ask, show, kept)
+    except (KeyboardInterrupt, EOFError):
+        show("\nInterrompu : rien n'a été enregistré.")
+        return False
+
+    show(SEPARATOR)
+    if completed:
+        show("Toutes les anomalies ont été traitées.")
+    else:
+        excluded = exclude_unresolved(frames, kept)
+        log += excluded
+        show(f"{len(excluded)} anomalie(s) non traitée(s) : "
+             "les lignes concernées seront écartées des données nettoyées.")
+
+    show_counts(frames, show)
+
+    if not log:
+        show("Aucune modification.")
+    if ask_yes_no(ask, f"Enregistrer dans {PROCESSED_DIR} ?"):
+        save(frames, log)
+        show(f"Données nettoyées enregistrées. Journal : {CORRECTIONS_FILE}")
+        return True
+    show("Rien n'a été enregistré.")
+    return False
+
+
+if __name__ == "__main__":
+    main()
