@@ -78,3 +78,13 @@ def failure_rate(connection):
         "FROM payments",
         (FAILED,),
     )
+
+
+def current_mrr(connection):
+    """Revenu récurrent théorique actuel : prix mensuels des abonnements actifs."""
+    return scalar(
+        connection,
+        "SELECT COALESCE(SUM(monthly_price), 0) FROM subscriptions "
+        "WHERE status = ?",
+        (ACTIVE,),
+    )
