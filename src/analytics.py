@@ -172,3 +172,23 @@ def revenue_comparison(connection):
         "running_subscriptions",
         "successful_payments",
     ]]
+
+
+def subscriptions_by_plan(connection):
+    """Répartition des abonnements par formule (tous et actifs)."""
+    plans = pd.read_sql_query(
+        """
+        SELECT plan,
+               COUNT(*)          AS subscriptions,
+               SUM(status = ?)   AS active_subscriptions
+        FROM subscriptions
+        GROUP BY plan
+        ORDER BY subscriptions DESC, plan
+        """,
+        connection,
+        params=(ACTIVE,),
+    )
+    plans["share_pct"] = (
+        plans["subscriptions"] / plans["subscriptions"].sum() * 100
+    ).round(1)
+    return plans
