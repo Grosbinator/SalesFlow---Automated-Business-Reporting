@@ -125,3 +125,38 @@ def test_failure_rate_is_failed_over_all_payments(connection):
 
 def test_current_mrr_sums_active_subscriptions(connection):
     assert analytics.current_mrr(connection) == 29 + 79
+
+
+# ---------------------------------------------------------------------------
+# 2. Revenu encaissé vs revenu récurrent théorique
+# ---------------------------------------------------------------------------
+
+def test_monthly_revenue_uses_payment_date(connection):
+    """P2 (abonnement de janvier) est encaissé en février : il compte en février."""
+    monthly = analytics.monthly_revenue(connection)
+    assert list(monthly["month"]) == ["2026-01", "2026-02", "2026-03"]
+    assert list(monthly["collected_revenue"]) == [29, 29 + 79, 79]
+
+
+def test_monthly_recurring_revenue_follows_subscription_periods(connection):
+    """Mars : S1 + S3 + S2 (résilié le 31 mars, donc encore dû en mars)."""
+    recurring = analytics.monthly_recurring_revenue(connection)
+    assert list(recurring["month"]) == ["2026-01", "2026-02", "2026-03"]
+    assert list(recurring["recurring_revenue"]) == [29, 29 + 79, 29 + 79 + 79]
+    assert list(recurring["running_subscriptions"]) == [1, 2, 3]
+
+
+def test_revenue_comparison_shows_gap(connection):
+    comparison = analytics.revenue_comparison(connection)
+    assert list(comparison["gap"]) == [0, 0, 79 - 187]
+
+
+def test_revenue_comparison_keeps_months_without_payment(connection):
+    """Un mois sans aucun paiement doit apparaître avec 0 encaissé."""
+    load(connection, subscriptions=[
+        ("S4", "C3", "Starter", "29.0", "2026-05-01", "", "active"),
+    ])
+    comparison = analytics.revenue_comparison(connection)
+    april = comparison[comparison["month"] == "2026-04"].iloc[0]
+    assert april["collected_revenue"] == 0
+    assert april["recurring_revenue"] == 29 + 79
