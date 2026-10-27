@@ -102,3 +102,54 @@ def row_index(anomaly):
 
 def can_keep(anomaly):
     return anomaly["error_message"].startswith(KEEPABLE_PREFIXES)
+
+
+# ---------------------------------------------------------------------------
+# Affichage et saisie
+# ---------------------------------------------------------------------------
+
+def describe(anomaly, frames, remaining):
+    """Texte affiché pour une anomalie : où, quoi, et la ligne complète."""
+    df = frames[anomaly["file_name"]]
+    index = row_index(anomaly)
+    lines = [
+        SEPARATOR,
+        f"Anomalie ({remaining} restante(s))",
+        f"  Fichier : {anomaly['file_name']}   "
+        f"Ligne : {anomaly['row_number']}   "
+        f"Colonne : {anomaly['column_name']}",
+        f"  Problème : {anomaly['error_message']}",
+        "  Ligne complète :",
+    ]
+    width = max(len(column) for column in df.columns)
+    for column in df.columns:
+        value = df.at[index, column]
+        marker = ">" if column == anomaly["column_name"] else " "
+        lines.append(f"  {marker} {column:<{width}}  {value if value != '' else '(vide)'}")
+    return "\n".join(lines)
+
+
+def ask_choice(ask, question, choices):
+    """Repose la question tant que la réponse n'est pas une des `choices`."""
+    menu = "  ".join(f"[{letter}] {label}" for letter, label in choices.items())
+    while True:
+        answer = ask(f"{menu}\n{question} ").strip().lower()
+        if answer in choices:
+            return answer
+
+
+def ask_yes_no(ask, question):
+    return ask_choice(ask, question, {"o": "Oui", "n": "Non"}) == "o"
+
+
+def ask_new_value(ask, column, old_value):
+    """Demande la nouvelle valeur ; None si l'utilisateur annule."""
+    value = ask(
+        f"Nouvelle valeur pour {column} "
+        f"(actuelle : {old_value or '(vide)'}, Entrée = annuler) : "
+    ).strip()
+    if value:
+        return value
+    if ask_yes_no(ask, "Vider la cellule ? (sinon : annuler)"):
+        return ""
+    return None
