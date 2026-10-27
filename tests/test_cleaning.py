@@ -246,3 +246,61 @@ def test_clean_data_produces_no_anomaly():
     assert cleaning.check_customers(customers) == []
     assert cleaning.check_subscriptions(subscriptions, customers) == []
     assert cleaning.check_payments(payments, subscriptions) == []
+
+
+# ---------------------------------------------------------------------------
+# 6. Lecture des CSV et écriture du rapport (dans un dossier temporaire)
+# ---------------------------------------------------------------------------
+
+def write_csv(folder, name, df):
+    df.to_csv(folder / name, index=False)
+
+
+def test_load_csv_raises_if_file_is_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(cleaning, "RAW_DIR", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        cleaning.load_csv("customers.csv")
+
+
+def test_load_csv_raises_if_columns_are_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(cleaning, "RAW_DIR", tmp_path)
+    write_csv(tmp_path, "customers.csv", make_df(VALID_CUSTOMER).drop(columns=["email"]))
+    with pytest.raises(ValueError, match="email"):
+        cleaning.load_csv("customers.csv")
+
+
+def test_load_csv_keeps_empty_cells_as_empty_text(tmp_path, monkeypatch):
+    """Les cellules vides doivent rester "" (et pas NaN), sinon les contrôles
+    de valeurs manquantes ne fonctionneraient pas."""
+    monkeypatch.setattr(cleaning, "RAW_DIR", tmp_path)
+    write_csv(tmp_path, "subscriptions.csv", make_df(VALID_SUBSCRIPTION))
+    df = cleaning.load_csv("subscriptions.csv")
+    assert df.at[0, "end_date"] == ""
+
+
+@pytest.fixture
+def output_dir(tmp_path, monkeypatch):
+    """Redirige le rapport vers un dossier temporaire."""
+    folder = tmp_path / "anomalies"
+    monkeypatch.setattr(cleaning, "ANOMALIES_DIR", folder)
+    monkeypatch.setattr(cleaning, "ANOMALIES_FILE", folder / "anomalies.csv")
+    return folder
+
+
+def test_save_anomalies_has_the_four_expected_columns(output_dir):
+    anomalies = []
+    cleaning.add_anomaly(anomalies, "payments.csv", 0, "amount", "Valeur manquante")
+    cleaning.save_anomalies(anomalies)
+
+    saved = pd.read_csv(output_dir / "anomalies.csv")
+    assert list(saved.columns) == [
+        "file_name", "row_number", "column_name", "error_message",
+    ]
+    assert saved.loc[0, "row_number"] == 2
+
+
+def test_save_anomalies_writes_header_only_when_nothing_found(output_dir):
+    cleaning.save_anomalies([])
+    saved = pd.read_csv(output_dir / "anomalies.csv")
+    assert saved.empty
+    assert list(saved.columns) == cleaning.ANOMALY_COLUMNS
