@@ -148,3 +148,44 @@ def test_check_numbers_flags_non_numeric_and_negative():
         ("payments.csv", 3, "amount"),
         ("payments.csv", 4, "amount"),
     }
+
+
+# ---------------------------------------------------------------------------
+# 3. Relations entre fichiers
+# ---------------------------------------------------------------------------
+
+def test_check_references_flags_unknown_ids_only():
+    customers = make_df(VALID_CUSTOMER, {"customer_id": "C001"})
+    subscriptions = make_df(
+        VALID_SUBSCRIPTION,
+        {"customer_id": "C001"},
+        {"customer_id": "C999"},
+    )
+    anomalies = []
+    cleaning.check_references(
+        anomalies,
+        "subscriptions.csv",
+        subscriptions,
+        "customer_id",
+        customers["customer_id"],
+        "customers.csv",
+    )
+    assert found(anomalies) == {("subscriptions.csv", 3, "customer_id")}
+    assert "C999" in anomalies[0]["error_message"]
+    assert "customers.csv" in anomalies[0]["error_message"]
+
+
+def test_subscription_with_unknown_customer_is_reported():
+    """Cas demandé : un customer_id de subscriptions.csv absent de customers.csv."""
+    customers = make_df(VALID_CUSTOMER)
+    subscriptions = make_df(VALID_SUBSCRIPTION, {"customer_id": "C999"})
+    anomalies = cleaning.check_subscriptions(subscriptions, customers)
+    assert found(anomalies) == {("subscriptions.csv", 2, "customer_id")}
+
+
+def test_payment_with_unknown_subscription_is_reported():
+    """Un subscription_id de payments.csv absent de subscriptions.csv."""
+    subscriptions = make_df(VALID_SUBSCRIPTION)
+    payments = make_df(VALID_PAYMENT, {"subscription_id": "S999"})
+    anomalies = cleaning.check_payments(payments, subscriptions)
+    assert found(anomalies) == {("payments.csv", 2, "subscription_id")}
