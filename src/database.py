@@ -66,3 +66,18 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_customer_id
 CREATE INDEX IF NOT EXISTS idx_payments_subscription_id
     ON payments (subscription_id);
 """
+
+
+def get_connection():
+    """Ouvre la base (créée si absente) avec les clés étrangères activées."""
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(DB_FILE)
+    # SQLite n'applique pas les clés étrangères par défaut :
+    # il faut les activer à chaque connexion.
+    connection.execute("PRAGMA foreign_keys = ON")
+    return connection
+
+
+def create_tables(connection):
+    """Crée les tables et index s'ils n'existent pas encore."""
+    connection.executescript(SCHEMA)
