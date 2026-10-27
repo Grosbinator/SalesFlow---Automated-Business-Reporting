@@ -230,3 +230,19 @@ def test_payment_with_missing_amount_is_reported_once():
     anomalies = cleaning.check_payments(payments, subscriptions)
     assert len(anomalies) == 1
     assert anomalies[0]["error_message"] == "Valeur manquante"
+
+
+# ---------------------------------------------------------------------------
+# 5. Pas de fausse alerte
+# ---------------------------------------------------------------------------
+
+def test_clean_data_produces_no_anomaly():
+    """Des données correctes ne doivent produire AUCUNE anomalie : sinon le
+    rapport serait noyé de fausses alertes et plus personne ne le lirait."""
+    customers = make_df(VALID_CUSTOMER)
+    subscriptions = make_df(VALID_SUBSCRIPTION)
+    payments = make_df(VALID_PAYMENT)
+
+    assert cleaning.check_customers(customers) == []
+    assert cleaning.check_subscriptions(subscriptions, customers) == []
+    assert cleaning.check_payments(payments, subscriptions) == []
