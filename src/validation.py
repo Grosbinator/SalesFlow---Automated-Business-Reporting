@@ -284,3 +284,37 @@ def exclude_unresolved(frames, kept):
             if index in frames[name].index:
                 frames[name] = frames[name].drop(index)
             log.append(log_entry(anomaly, "ligne écartée (non traitée)"))
+
+
+# ---------------------------------------------------------------------------
+# Écriture des résultats
+# ---------------------------------------------------------------------------
+
+def to_processed(name, df):
+    """Ajoute les colonnes attendues par database.py dans les fichiers nettoyés."""
+    df = df.copy()
+    if name != "customers.csv":
+        df["calculation_eligible"] = "True"
+    if name == "payments.csv":
+        df["revenue_eligible"] = (df["status"] == "success").map(str)
+    return df
+
+
+def save(frames, log):
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    for name, processed_name in PROCESSED_FILES.items():
+        to_processed(name, frames[name]).to_csv(
+            PROCESSED_DIR / processed_name, index=False
+        )
+
+    # Journal cumulatif : on ajoute à la suite des sessions précédentes.
+    CORRECTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    journal = pd.DataFrame(log, columns=CORRECTION_COLUMNS)
+    is_new = not CORRECTIONS_FILE.exists()
+    journal.to_csv(
+        CORRECTIONS_FILE,
+        mode="w" if is_new else "a",
+        header=is_new,
+        index=False,
+        encoding="utf-8-sig" if is_new else "utf-8",
+    )
