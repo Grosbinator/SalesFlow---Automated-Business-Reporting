@@ -266,3 +266,29 @@ def plan_chart(plans, width_px=420):
     ax.spines["bottom"].set_visible(False)
     style_axes(ax, "Abonnements par formule")
     return to_image(figure, width_px)
+
+
+# ---------------------------------------------------------------------------
+# Anomalies (fichier produit par cleaning.py)
+# ---------------------------------------------------------------------------
+
+def load_anomalies():
+    """Charge anomalies/anomalies.csv ; None si cleaning.py n'a pas été lancé."""
+    if not ANOMALIES_FILE.exists():
+        return None
+    return pd.read_csv(ANOMALIES_FILE, encoding="utf-8-sig")
+
+
+def anomalies_by(anomalies, column):
+    """Nombre d'anomalies par valeur de `column`, de la plus fréquente à la moins."""
+    counts = anomalies.groupby(column).size().reset_index(name="anomalies")
+    return counts.sort_values(
+        ["anomalies", column], ascending=[False, True], ignore_index=True
+    )
+
+
+def with_error_type(anomalies):
+    """Ajoute le type d'erreur : le message sans la valeur fautive."""
+    anomalies = anomalies.copy()
+    anomalies["error_type"] = anomalies["error_message"].str.split(" : ").str[0]
+    return anomalies
