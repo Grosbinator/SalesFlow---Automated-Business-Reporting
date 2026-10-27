@@ -178,3 +178,74 @@ def test_cancel_modification_shows_the_anomaly_again():
     # m, Entrée (pas de valeur), n (ne pas vider) -> annulé ; puis q.
     validation.review(frames, answers("m", "", "n", "q"), Console())
     assert frames["payments.csv"].at[0, "amount"] == ""
+
+
+# ---------------------------------------------------------------------------
+# 3. Lignes non traitées et enregistrement
+# ---------------------------------------------------------------------------
+
+def test_exclude_unresolved_cascades_to_dependent_rows():
+    """Écarter un client invalide écarte aussi ses abonnements et paiements."""
+    frames = make_frames(customers=make_df(VALID_CUSTOMER, {"company_name": ""}))
+    log = validation.exclude_unresolved(frames, kept=set())
+    assert all(df.empty for df in frames.values())
+    assert {entry["file_name"] for entry in log} == {
+        "customers.csv", "subscriptions.csv", "payments.csv",
+    }
+
+
+@pytest.fixture
+def output(tmp_path, monkeypatch):
+    monkeypatch.setattr(validation, "PROCESSED_DIR", tmp_path / "processed")
+    monkeypatch.setattr(validation, "CORRECTIONS_FILE", tmp_path / "corrections.csv")
+    return tmp_path
+
+
+def test_main_saves_processed_files_and_journal(output, monkeypatch):
+    payments = make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001"},
+        {"payment_id": "P002", "amount": "", "status": "failed"},
+    )
+    monkeypatch.setattr(validation, "load_frames", lambda: make_frames(payments=payments))
+
+    validation.main(answers("m", "29.0", "o"), Console())
+
+    saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
+    assert list(saved["amount"]) == ["29.0", "29.0"]
+    # Colonnes attendues par database.py :
+    assert list(saved["revenue_eligible"]) == ["True", "False"]
+    assert list(saved["calculation_eligible"]) == ["True", "True"]
+    customers = pd.read_csv(output / "processed" / "customers_clean.csv")
+    assert "calculation_eligible" not in customers.columns
+
+    journal = pd.read_csv(output / "corrections.csv", encoding="utf-8-sig")
+    assert list(journal["action"]) == ["valeur modifiée"]
+    assert journal.loc[0, "row_number"] == 3
+
+
+def test_main_writes_nothing_if_not_confirmed(output, monkeypatch):
+    monkeypatch.setattr(validation, "load_frames", make_frames)
+    validation.main(answers("n"), Console())
+    assert not (output / "processed").exists()
+    assert not (output / "corrections.csv").exists()
+
+
+def test_journal_is_replayed_and_appended_between_sessions(output, monkeypatch):
+    """2e session : la correction de la 1re est réappliquée sans rien
+    demander, seule la nouvelle anomalie est proposée, et le journal s'allonge."""
+    payments = make_df(VALID_PAYMENT, {"amount": ""})
+    monkeypatch.setattr(
+        validation, "load_frames", lambda: make_frames(payments=payments.copy())
+    )
+    validation.main(answers("m", "1", "o"), Console())
+
+    payments.at[0, "payment_method"] = ""  # nouvelle anomalie dans le CSV brut
+    console = Console()
+    validation.main(answers("m", "card", "o"), console)
+
+    assert "1 décision(s) des sessions précédentes réappliquée(s)" in console.text
+    journal = pd.read_csv(output / "corrections.csv", dtype=str, encoding="utf-8-sig")
+    assert list(journal["new_value"]) == ["1", "card"]
+    saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
+    assert (saved.at[0, "amount"], saved.at[0, "payment_method"]) == ("1", "card")
