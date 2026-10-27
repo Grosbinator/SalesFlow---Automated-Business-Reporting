@@ -304,3 +304,41 @@ def test_save_anomalies_writes_header_only_when_nothing_found(output_dir):
     saved = pd.read_csv(output_dir / "anomalies.csv")
     assert saved.empty
     assert list(saved.columns) == cleaning.ANOMALY_COLUMNS
+
+
+# ---------------------------------------------------------------------------
+# 7. Test de bout en bout : main() sur trois petits CSV
+# ---------------------------------------------------------------------------
+
+def test_main_builds_the_anomalies_file(tmp_path, monkeypatch, output_dir):
+    """Simule un vrai lancement : trois CSV contenant chacun une erreur
+    connue, puis vérifie le contenu exact de anomalies.csv."""
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    monkeypatch.setattr(cleaning, "RAW_DIR", raw)
+
+    write_csv(raw, "customers.csv", make_df(
+        VALID_CUSTOMER,
+        {"customer_id": "C001"},
+        {"customer_id": "C002", "email": "oups"},
+    ))
+    write_csv(raw, "subscriptions.csv", make_df(
+        VALID_SUBSCRIPTION,
+        {"subscription_id": "S001", "customer_id": "C001"},
+        {"subscription_id": "S002", "customer_id": "C999"},
+    ))
+    write_csv(raw, "payments.csv", make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001", "subscription_id": "S001"},
+        {"payment_id": "P002", "subscription_id": "S001", "amount": "-5"},
+    ))
+
+    cleaning.main()
+
+    saved = pd.read_csv(output_dir / "anomalies.csv")
+    result = set(zip(saved["file_name"], saved["row_number"], saved["column_name"]))
+    assert result == {
+        ("customers.csv", 3, "email"),
+        ("subscriptions.csv", 3, "customer_id"),
+        ("payments.csv", 3, "amount"),
+    }
