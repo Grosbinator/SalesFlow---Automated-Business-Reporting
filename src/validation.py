@@ -61,3 +61,44 @@ KEEPABLE_PREFIXES = (
 )
 
 SEPARATOR = "-" * 64
+
+
+# ---------------------------------------------------------------------------
+# Données et contrôles
+# ---------------------------------------------------------------------------
+
+def load_frames():
+    """Charge les trois CSV bruts. L'index pandas d'origine est conservé
+    jusqu'au bout : il donne toujours le bon numéro de ligne du CSV, même
+    après des suppressions."""
+    return {name: cleaning.load_csv(name) for name in PROCESSED_FILES}
+
+
+def run_checks(frames):
+    """Relance les contrôles de cleaning.py sur l'état actuel des données."""
+    customers = frames["customers.csv"]
+    subscriptions = frames["subscriptions.csv"]
+    payments = frames["payments.csv"]
+    return (
+        cleaning.check_customers(customers)
+        + cleaning.check_subscriptions(subscriptions, customers)
+        + cleaning.check_payments(payments, subscriptions)
+    )
+
+
+def anomaly_key(anomaly):
+    return (
+        anomaly["file_name"],
+        anomaly["row_number"],
+        anomaly["column_name"],
+        anomaly["error_message"],
+    )
+
+
+def row_index(anomaly):
+    """Numéro de ligne du CSV -> index pandas (en-tête = ligne 1)."""
+    return anomaly["row_number"] - 2
+
+
+def can_keep(anomaly):
+    return anomaly["error_message"].startswith(KEEPABLE_PREFIXES)
