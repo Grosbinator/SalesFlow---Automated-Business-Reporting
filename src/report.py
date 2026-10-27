@@ -340,3 +340,47 @@ def build_revenue_sheet(sheet, comparison):
         anchor_column = get_column_letter(len(comparison.columns) + 2)
         sheet.add_image(collected_chart(monthly), f"{anchor_column}4")
     return end_row
+
+
+def build_customers_sheet(sheet, connection):
+    write_title(sheet, "Customers — clients")
+    customers = analytics.customers_overview(connection)
+
+    total = len(customers)
+    active = int(customers["is_active"].sum())
+    stats = pd.DataFrame(
+        [
+            ("Clients", total),
+            ("Clients actifs", active),
+            ("Clients sans abonnement actif", total - active),
+            ("Part de clients actifs", active / total if total else None),
+            ("Total payé par client (moyenne)",
+             customers["total_paid"].mean() if total else None),
+        ],
+        columns=["indicator", "value"],
+        dtype=object,
+    )
+    row = write_table(sheet, stats, 3, title="Statistiques")
+    # Formats ligne par ligne : la colonne « Valeur » mélange les unités.
+    sheet.cell(row - 3, 2).number_format = PERCENT
+    sheet.cell(row - 2, 2).number_format = EURO
+
+    row = write_table(
+        sheet, analytics.customers_by_country(connection), row, title="Clients par pays"
+    )
+    write_table(sheet, customers, row, title="Liste des clients")
+    autosize_columns(sheet)
+
+
+def build_subscriptions_sheet(sheet, connection, plans):
+    write_title(sheet, "Subscriptions — répartition des abonnements")
+    row = write_table(
+        sheet, plans, 3, title="Par formule", formats={"share_pct": "0.0"}
+    )
+    write_table(
+        sheet, analytics.subscriptions_by_status(connection), row,
+        title="Par formule et par statut",
+    )
+    autosize_columns(sheet)
+    if not plans.empty:
+        sheet.add_image(plan_chart(plans), "G3")
