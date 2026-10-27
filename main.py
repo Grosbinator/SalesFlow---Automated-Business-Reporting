@@ -79,3 +79,33 @@ def step_indicators():
 
 def step_report():
     report.main()
+
+
+def build_steps(interactive=False, skip_import=False):
+    """Liste des étapes : (titre, fonction, piste de résolution en cas d'échec)."""
+    steps = [
+        (
+            "Import des fichiers sources",
+            step_import,
+            "Placer customers.csv, subscriptions.csv et payments.csv dans "
+            "Téléchargements, ou relancer avec --skip-import pour réutiliser "
+            "data/raw/.",
+        ),
+        (
+            "Nettoyage et validation",
+            lambda: step_clean_and_validate(interactive),
+            "Vérifier les colonnes des CSV de data/raw/.",
+        ),
+        (
+            "Chargement dans SQLite",
+            step_load,
+            "Vérifier les données nettoyées : python src/validation.py",
+        ),
+        ("Calcul des indicateurs", step_indicators, None),
+        (
+            "Génération du rapport Excel",
+            step_report,
+            "Fermer le rapport s'il est ouvert dans Excel, puis relancer.",
+        ),
+    ]
+    return steps[1:] if skip_import else steps
