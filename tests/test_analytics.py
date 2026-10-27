@@ -181,3 +181,21 @@ def test_summary_lists_the_key_indicators(connection):
     assert values["Chiffre d'affaires encaissé (€)"] == 216
     assert values["Clients actifs"] == 1
     assert values["Taux d'échec des paiements (%)"] == 20.0
+
+
+# ---------------------------------------------------------------------------
+# 4. Cas limites
+# ---------------------------------------------------------------------------
+
+def test_empty_database_does_not_crash(empty_connection):
+    assert analytics.collected_revenue(empty_connection) == 0
+    assert analytics.average_basket(empty_connection) is None
+    assert analytics.failure_rate(empty_connection) is None
+    assert analytics.monthly_recurring_revenue(empty_connection).empty
+    assert analytics.revenue_comparison(empty_connection).empty
+
+
+def test_get_connection_requires_existing_database(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_FILE", tmp_path / "absente.db")
+    with pytest.raises(FileNotFoundError, match="database.py"):
+        analytics.get_connection()
