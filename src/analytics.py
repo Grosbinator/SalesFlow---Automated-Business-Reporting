@@ -37,3 +37,25 @@ def get_connection():
 def scalar(connection, query, params=()):
     """Exécute une requête qui renvoie une seule valeur."""
     return connection.execute(query, params).fetchone()[0]
+
+
+# ---------------------------------------------------------------------------
+# Indicateurs simples (une valeur)
+# ---------------------------------------------------------------------------
+
+def collected_revenue(connection):
+    """Chiffre d'affaires encaissé : somme des paiements réussis."""
+    return scalar(
+        connection,
+        "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = ?",
+        (SUCCESS,),
+    )
+
+
+def active_customers(connection):
+    """Nombre de clients distincts ayant au moins un abonnement actif."""
+    return scalar(
+        connection,
+        "SELECT COUNT(DISTINCT customer_id) FROM subscriptions WHERE status = ?",
+        (ACTIVE,),
+    )
