@@ -88,3 +88,24 @@ def current_mrr(connection):
         "WHERE status = ?",
         (ACTIVE,),
     )
+
+
+# ---------------------------------------------------------------------------
+# Indicateurs par mois et par formule (tableaux)
+# ---------------------------------------------------------------------------
+
+def monthly_revenue(connection):
+    """Revenu encaissé par mois, selon la date du paiement."""
+    return pd.read_sql_query(
+        """
+        SELECT substr(payment_date, 1, 7) AS month,
+               SUM(amount)                AS collected_revenue,
+               COUNT(*)                   AS successful_payments
+        FROM payments
+        WHERE status = ?
+        GROUP BY month
+        ORDER BY month
+        """,
+        connection,
+        params=(SUCCESS,),
+    )
