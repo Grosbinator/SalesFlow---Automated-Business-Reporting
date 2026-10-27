@@ -66,3 +66,84 @@ def test_skip_import_removes_the_first_step():
         "Génération du rapport Excel",
     ]
     assert len(main.build_steps()) == 5
+
+
+# ---------------------------------------------------------------------------
+# 2. Bout en bout sur de petits CSV (dossier temporaire)
+# ---------------------------------------------------------------------------
+
+CUSTOMERS = (
+    "customer_id,company_name,email,signup_date,country\n"
+    "C001,NovaTech,contact@novatech.example,2026-01-12,France\n"
+    "C002,Greenlytic,hello@greenlytic.example,2026-02-19,France\n"
+)
+SUBSCRIPTIONS = (
+    "subscription_id,customer_id,plan,monthly_price,start_date,end_date,status\n"
+    "S001,C001,Starter,29.0,2026-01-12,,active\n"
+    "S002,C002,Pro,79.0,2026-02-19,,active\n"
+)
+PAYMENTS = (
+    "payment_id,subscription_id,payment_date,amount,status,payment_method\n"
+    "P001,S001,2026-01-12,29.0,success,card\n"
+    "P002,S002,2026-02-19,79.0,success,card\n"
+    "P003,S999,2026-02-20,49.0,success,card\n"  # abonnement inconnu
+)
+
+
+@pytest.fixture
+def project(tmp_path, monkeypatch):
+    """Projet complet dans un dossier temporaire, avec trois CSV bruts."""
+    raw = tmp_path / "data" / "raw"
+    raw.mkdir(parents=True)
+    (raw / "customers.csv").write_text(CUSTOMERS, encoding="utf-8")
+    (raw / "subscriptions.csv").write_text(SUBSCRIPTIONS, encoding="utf-8")
+    (raw / "payments.csv").write_text(PAYMENTS, encoding="utf-8")
+
+    anomalies = tmp_path / "anomalies"
+    processed = tmp_path / "data" / "processed"
+    monkeypatch.setattr(cleaning, "RAW_DIR", raw)
+    monkeypatch.setattr(cleaning, "ANOMALIES_DIR", anomalies)
+    monkeypatch.setattr(cleaning, "ANOMALIES_FILE", anomalies / "anomalies.csv")
+    monkeypatch.setattr(report, "ANOMALIES_FILE", anomalies / "anomalies.csv")
+    monkeypatch.setattr(validation, "PROCESSED_DIR", processed)
+    monkeypatch.setattr(validation, "CORRECTIONS_FILE", anomalies / "corrections.csv")
+    monkeypatch.setattr(database, "PROCESSED_DIR", processed)
+    monkeypatch.setattr(database, "DB_FILE", tmp_path / "data" / "salesflow.db")
+    monkeypatch.setattr(report, "REPORT_FILE", tmp_path / "reports" / "monthly_report.xlsx")
+    return tmp_path
+
+
+def test_full_pipeline_produces_the_report(project):
+    assert main.main(["--skip-import"]) == 0
+
+    workbook = load_workbook(project / "reports" / "monthly_report.xlsx")
+    assert workbook.sheetnames == [
+        "Dashboard", "Revenue", "Customers", "Subscriptions", "Data Quality",
+    ]
+    # Le paiement lié à un abonnement inconnu a été écarté avant la base.
+    connection = sqlite3.connect(project / "data" / "salesflow.db")
+    payments = [row[0] for row in connection.execute("SELECT payment_id FROM payments")]
+    connection.close()
+    assert sorted(payments) == ["P001", "P002"]
+    # Mais il reste signalé dans le rapport d'anomalies.
+    anomalies = pd.read_csv(project / "anomalies" / "anomalies.csv", encoding="utf-8-sig")
+    assert list(anomalies["column_name"]) == ["subscription_id"]
+
+
+def test_critical_error_produces_no_report(project, capsys):
+    (project / "data" / "raw" / "customers.csv").unlink()
+
+    assert main.main(["--skip-import"]) == 1
+
+    assert not (project / "reports" / "monthly_report.xlsx").exists()
+    output = capsys.readouterr().out
+    assert "ÉCHEC à l'étape 1/4 (Nettoyage et validation)" in output
+    assert "FileNotFoundError" in output
+
+
+def test_running_twice_gives_the_same_database(project):
+    assert main.main(["--skip-import"]) == 0
+    assert main.main(["--skip-import"]) == 0
+    connection = sqlite3.connect(project / "data" / "salesflow.db")
+    assert connection.execute("SELECT COUNT(*) FROM payments").fetchone() == (2,)
+    connection.close()
