@@ -20,9 +20,11 @@ import validation  # noqa: E402
 import validation_gui  # noqa: E402
 from test_validation import (  # noqa: E402, F401
     VALID_PAYMENT,
+    journal_entry,
     make_df,
     make_frames,
     output,
+    write_journal,
 )
 
 # Ligne 2 : montant manquant ; ligne 3 : montant négatif ; ligne 4 :
@@ -187,7 +189,7 @@ def test_gui_validate_saves_the_decisions(output, monkeypatch, root):
     real_window = validation_gui.ValidationWindow
     monkeypatch.setattr(
         validation_gui, "ValidationWindow",
-        lambda root, session: opened.append(real_window(root, session)) or opened[0],
+        lambda root, session, demo=False: opened.append(real_window(root, session, demo)) or opened[0],
     )
     monkeypatch.setattr(root, "mainloop", user_clicks)
 
@@ -212,3 +214,38 @@ def test_gui_validate_cancelled_saves_nothing(output, monkeypatch, root):
 
     assert validation_gui.gui_validate(show=lambda text="": None) is False
     assert not (output / "processed").exists()
+
+
+def test_demo_opens_the_window_even_if_the_journal_fixes_everything(
+        output, monkeypatch, root):
+    """Mode démo : le journal corrige déjà l'erreur, la fenêtre s'ouvre quand
+    même (titre « mode démo ») et le journal n'est pas modifié."""
+    monkeypatch.setattr(
+        validation, "load_frames",
+        lambda: make_frames(payments=make_df(VALID_PAYMENT, {"amount": ""})),
+    )
+    before = write_journal(output, journal_entry(
+        2, "amount", "Valeur manquante", "valeur modifiée", "", "29.0"))
+    monkeypatch.setattr(validation_gui.tk, "Tk", lambda: root)
+    monkeypatch.setattr(validation_gui, "bring_to_front", lambda root: None)
+
+    def user_clicks():
+        window = opened[0]
+        assert "mode démo" in root.title()
+        window.value_var.set("49.0")
+        window.modify()
+        window.finish()
+
+    opened = []
+    real_window = validation_gui.ValidationWindow
+    monkeypatch.setattr(
+        validation_gui, "ValidationWindow",
+        lambda root, session, demo: opened.append(real_window(root, session, demo)) or opened[0],
+    )
+    monkeypatch.setattr(root, "mainloop", user_clicks)
+
+    assert validation_gui.gui_validate(show=lambda text="": None, use_journal=False)
+    assert opened, "la fenêtre aurait dû s'ouvrir"
+    saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
+    assert list(saved["amount"]) == ["49.0"]
+    assert (output / "corrections.csv").read_bytes() == before
