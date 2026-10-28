@@ -26,16 +26,22 @@ MUTED_COLOR = "#52514e"
 
 
 class ValidationWindow:
-    """Fenêtre de revue. `result` vaut True (continuer) ou False (annulé)."""
+    """Fenêtre de revue. `result` vaut True (continuer) ou False (annulé).
 
-    def __init__(self, root, session):
+    demo=True : mode démo, signalé dans le titre ; le journal des
+    corrections ne sera pas modifié.
+    """
+
+    def __init__(self, root, session, demo=False):
         self.root = root
         self.session = session
+        self.demo = demo
         self.result = None
         self.pending = []
         self.current = None
 
-        root.title("SalesFlow — Validation des anomalies")
+        root.title("SalesFlow — Validation des anomalies"
+                   + (" (mode démo)" if demo else ""))
         root.protocol("WM_DELETE_WINDOW", self.cancel)
         self._build()
         self.refresh()
@@ -61,11 +67,16 @@ class ValidationWindow:
             main, text="Anomalies détectées dans les fichiers sources",
             font=("Segoe UI", 13, "bold"),
         ).pack(anchor="w")
+        journal_note = (
+            "Mode démo : les décisions ne sont pas enregistrées dans le journal "
+            "des corrections."
+            if self.demo else
+            "Chaque décision est enregistrée dans anomalies/corrections.csv."
+        )
         ttk.Label(
             main,
             text="Traitez les anomalies avant le chargement en base. Les fichiers "
-                 "de data/raw/ ne sont jamais modifiés ; chaque décision est "
-                 "enregistrée dans anomalies/corrections.csv.",
+                 f"de data/raw/ ne sont jamais modifiés. {journal_note}",
             foreground=MUTED_COLOR, wraplength=940,
         ).pack(anchor="w", pady=(2, 10))
 
@@ -303,16 +314,20 @@ def bring_to_front(root):
     root.focus_force()
 
 
-def gui_validate(show=print):
+def gui_validate(show=print, use_journal=True):
     """Validation avec fenêtre (utilisée par main.py).
 
-    Réapplique le journal ; s'il reste des anomalies, ouvre la fenêtre.
-    Enregistre ensuite data/processed/ (lignes non traitées écartées).
+    Réapplique le journal (sauf use_journal=False, mode démo : toutes les
+    erreurs sont proposées et le journal n'est pas modifié) ; s'il reste
+    des anomalies, ouvre la fenêtre. Enregistre ensuite data/processed/
+    (lignes non traitées écartées).
     Renvoie True si les données ont été enregistrées, False si annulé.
     Lève tk.TclError si aucun affichage n'est disponible.
     """
     frames = validation.load_frames()
-    kept, applied = validation.replay(frames, validation.load_journal())
+    kept, applied = validation.replay(
+        frames, validation.previous_decisions(use_journal, show)
+    )
     if applied:
         show(f"{applied} décision(s) du journal réappliquée(s).")
     session = validation.Session(frames, kept)
@@ -324,7 +339,7 @@ def gui_validate(show=print):
              "fenêtre de validation ouverte.")
         enable_high_dpi()
         root = tk.Tk()
-        window = ValidationWindow(root, session)
+        window = ValidationWindow(root, session, demo=not use_journal)
         bring_to_front(root)
         root.mainloop()
         if not window.result:
@@ -332,7 +347,7 @@ def gui_validate(show=print):
             return False
 
     excluded = validation.exclude_unresolved(frames, session.kept)
-    validation.save(frames, session.log + excluded)
+    validation.save(frames, session.log + excluded, use_journal)
     show(f"{len(session.log)} décision(s) enregistrée(s), "
          f"{len(excluded)} anomalie(s) non traitée(s) : lignes écartées.")
     validation.show_counts(frames, show)
