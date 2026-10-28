@@ -12,7 +12,10 @@ ajoutées au journal anomalies/corrections.csv et réappliquées ensuite.
 Usage : python src/validation_gui.py   (ou automatiquement par main.py)
 """
 
+import ctypes
+import sys
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
 import validation
@@ -33,17 +36,24 @@ class ValidationWindow:
         self.current = None
 
         root.title("SalesFlow — Validation des anomalies")
-        root.geometry("1000x580")
-        root.minsize(840, 480)
         root.protocol("WM_DELETE_WINDOW", self.cancel)
         self._build()
         self.refresh()
+        # Taille calculée d'après le contenu (et non fixe) : rien n'est coupé,
+        # quelle que soit la mise à l'échelle de l'écran.
+        root.update_idletasks()
+        root.minsize(root.winfo_reqwidth(), root.winfo_reqheight())
 
     # ------------------------------------------------------------------
     # Construction de la fenêtre
     # ------------------------------------------------------------------
 
     def _build(self):
+        # Hauteur des lignes du tableau d'après la police : sinon le texte
+        # est rogné sur les écrans mis à l'échelle.
+        linespace = tkfont.nametofont("TkDefaultFont").metrics("linespace")
+        ttk.Style(self.root).configure("Treeview", rowheight=int(linespace * 1.5))
+
         main = ttk.Frame(self.root, padding=12)
         main.pack(fill="both", expand=True)
 
@@ -66,7 +76,9 @@ class ValidationWindow:
         left = ttk.Frame(body, padding=(0, 0, 8, 0))
         self.count_label = ttk.Label(left, font=("Segoe UI", 10, "bold"))
         self.count_label.pack(anchor="w", pady=(0, 4))
-        self.listbox = tk.Listbox(left, width=52, activestyle="none", exportselection=False)
+        self.listbox = tk.Listbox(
+            left, width=40, height=14, activestyle="none", exportselection=False,
+        )
         self.listbox.pack(side="left", fill="both", expand=True)
         scrollbar = ttk.Scrollbar(left, command=self.listbox.yview)
         scrollbar.pack(side="right", fill="y")
@@ -134,10 +146,11 @@ class ValidationWindow:
         self.pending = self.session.pending()
         self.listbox.delete(0, "end")
         for anomaly in self.pending:
+            # Message complet affiché à droite : la liste reste étroite.
             self.listbox.insert(
                 "end",
                 f"{anomaly['file_name']} · ligne {anomaly['row_number']} · "
-                f"{anomaly['column_name']} — {anomaly['error_message']}",
+                f"{anomaly['column_name']}",
             )
         self.count_label.config(text=f"{len(self.pending)} anomalie(s) restante(s)")
 
@@ -273,6 +286,15 @@ class ValidationWindow:
             self.root.destroy()
 
 
+def enable_high_dpi():
+    """Texte net sur les écrans Windows mis à l'échelle (125 %, 150 %...)."""
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except (AttributeError, OSError):
+            pass  # anciennes versions de Windows : affichage par défaut
+
+
 def bring_to_front(root):
     """Affiche la fenêtre au premier plan (elle s'ouvre depuis un terminal)."""
     root.lift()
@@ -300,6 +322,7 @@ def gui_validate(show=print):
     else:
         show(f"{len(session.pending())} anomalie(s) à traiter : "
              "fenêtre de validation ouverte.")
+        enable_high_dpi()
         root = tk.Tk()
         window = ValidationWindow(root, session)
         bring_to_front(root)
