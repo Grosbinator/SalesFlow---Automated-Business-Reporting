@@ -305,3 +305,28 @@ def test_auto_validate_excludes_unresolved_rows(output, monkeypatch):
     validation.auto_validate(show=Console())
     saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
     assert list(saved["payment_id"]) == ["P001"]
+
+
+# ---------------------------------------------------------------------------
+# 5. Session (logique partagée console / fenêtre)
+# ---------------------------------------------------------------------------
+
+def test_session_applies_decisions_and_logs_them():
+    payments = make_df(
+        VALID_PAYMENT,
+        {"payment_id": "P001", "amount": ""},
+        {"payment_id": "P002", "amount": "-5"},
+        {"payment_id": "P003", "subscription_id": "S999"},
+    )
+    session = validation.Session(make_frames(payments=payments))
+    missing, negative, unknown = session.pending()
+
+    session.modify(missing, "29.0")
+    session.keep(negative)
+    session.delete(unknown)
+
+    assert session.pending() == []
+    assert list(session.frames["payments.csv"]["amount"]) == ["29.0", "-5"]
+    assert [entry["action"] for entry in session.log] == [
+        "valeur modifiée", "gardée telle quelle", "ligne supprimée",
+    ]

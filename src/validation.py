@@ -169,6 +169,44 @@ def log_entry(anomaly, action, old_value="", new_value=""):
     }
 
 
+class Session:
+    """Données en cours de correction, anomalies gardées et journal.
+
+    Partagée par la console (review) et la fenêtre (validation_gui.py) :
+    les deux appliquent les décisions de la même façon. `frames` est
+    modifié sur place.
+    """
+
+    def __init__(self, frames, kept=None):
+        self.frames = frames
+        self.kept = set() if kept is None else kept
+        self.log = []
+
+    def pending(self):
+        """Anomalies restantes (contrôles relancés sur l'état actuel)."""
+        return [a for a in run_checks(self.frames) if anomaly_key(a) not in self.kept]
+
+    def value(self, anomaly):
+        """Valeur actuelle de la cellule concernée par l'anomalie."""
+        df = self.frames[anomaly["file_name"]]
+        return df.at[row_index(anomaly), anomaly["column_name"]]
+
+    def modify(self, anomaly, new_value):
+        old_value = self.value(anomaly)
+        df = self.frames[anomaly["file_name"]]
+        df.at[row_index(anomaly), anomaly["column_name"]] = new_value
+        self.log.append(log_entry(anomaly, "valeur modifiée", old_value, new_value))
+
+    def delete(self, anomaly):
+        name = anomaly["file_name"]
+        self.frames[name] = self.frames[name].drop(row_index(anomaly))
+        self.log.append(log_entry(anomaly, "ligne supprimée"))
+
+    def keep(self, anomaly):
+        self.kept.add(anomaly_key(anomaly))
+        self.log.append(log_entry(anomaly, "gardée telle quelle"))
+
+
 def review(frames, ask=input, show=print, kept=None):
     """Propose les anomalies une par une et applique les décisions.
 
@@ -177,17 +215,15 @@ def review(frames, ask=input, show=print, kept=None):
     True si toutes les anomalies ont été traitées, False si on a quitté).
     `ask` et `show` remplacent input/print dans les tests.
     """
-    log = []
-    kept = set() if kept is None else kept
+    session = Session(frames, kept)
 
     while True:
-        pending = [a for a in run_checks(frames) if anomaly_key(a) not in kept]
+        pending = session.pending()
         if not pending:
-            return log, kept, True
+            return session.log, session.kept, True
 
         anomaly = pending[0]
-        name, column = anomaly["file_name"], anomaly["column_name"]
-        index = row_index(anomaly)
+        column = anomaly["column_name"]
         show(describe(anomaly, frames, len(pending)))
 
         choices = {"m": "Modifier la valeur", "s": "Supprimer la ligne"}
@@ -197,26 +233,23 @@ def review(frames, ask=input, show=print, kept=None):
         action = ask_choice(ask, "Votre choix :", choices)
 
         if action == "q":
-            return log, kept, False
+            return session.log, session.kept, False
 
         if action == "s":
-            frames[name] = frames[name].drop(index)
-            log.append(log_entry(anomaly, "ligne supprimée"))
+            session.delete(anomaly)
             show("  -> Ligne supprimée.")
 
         elif action == "g":
-            kept.add(anomaly_key(anomaly))
-            log.append(log_entry(anomaly, "gardée telle quelle"))
+            session.keep(anomaly)
             show("  -> Valeur gardée.")
 
         else:
-            old_value = frames[name].at[index, column]
+            old_value = session.value(anomaly)
             new_value = ask_new_value(ask, column, old_value)
             if new_value is None:
                 show("  -> Modification annulée.")
                 continue
-            frames[name].at[index, column] = new_value
-            log.append(log_entry(anomaly, "valeur modifiée", old_value, new_value))
+            session.modify(anomaly, new_value)
             show(f"  -> {column} : {old_value or '(vide)'} -> {new_value or '(vide)'}")
 
 
