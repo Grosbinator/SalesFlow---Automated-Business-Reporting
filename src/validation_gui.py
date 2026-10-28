@@ -271,3 +271,50 @@ class ValidationWindow:
         ):
             self.result = False
             self.root.destroy()
+
+
+def bring_to_front(root):
+    """Affiche la fenêtre au premier plan (elle s'ouvre depuis un terminal)."""
+    root.lift()
+    root.attributes("-topmost", True)
+    root.after(500, lambda: root.attributes("-topmost", False))
+    root.focus_force()
+
+
+def gui_validate(show=print):
+    """Validation avec fenêtre (utilisée par main.py).
+
+    Réapplique le journal ; s'il reste des anomalies, ouvre la fenêtre.
+    Enregistre ensuite data/processed/ (lignes non traitées écartées).
+    Renvoie True si les données ont été enregistrées, False si annulé.
+    Lève tk.TclError si aucun affichage n'est disponible.
+    """
+    frames = validation.load_frames()
+    kept, applied = validation.replay(frames, validation.load_journal())
+    if applied:
+        show(f"{applied} décision(s) du journal réappliquée(s).")
+    session = validation.Session(frames, kept)
+
+    if not session.pending():
+        show("Aucune anomalie à traiter.")
+    else:
+        show(f"{len(session.pending())} anomalie(s) à traiter : "
+             "fenêtre de validation ouverte.")
+        root = tk.Tk()
+        window = ValidationWindow(root, session)
+        bring_to_front(root)
+        root.mainloop()
+        if not window.result:
+            show("Validation annulée : rien n'a été enregistré.")
+            return False
+
+    excluded = validation.exclude_unresolved(frames, session.kept)
+    validation.save(frames, session.log + excluded)
+    show(f"{len(session.log)} décision(s) enregistrée(s), "
+         f"{len(excluded)} anomalie(s) non traitée(s) : lignes écartées.")
+    validation.show_counts(frames, show)
+    return True
+
+
+if __name__ == "__main__":
+    gui_validate()
