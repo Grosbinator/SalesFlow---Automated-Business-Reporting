@@ -1,22 +1,41 @@
-"""Importe les CSV du dossier Téléchargements vers data/raw avec pandas."""
+"""Importe les CSV sources vers data/raw avec pandas.
 
+Dossier source, par ordre de priorité :
+1. l'argument `source_dir` (option --source) ;
+2. la variable d'environnement SALESFLOW_SOURCE_DIR ;
+3. data/sample/ : données d'exemple fournies avec le projet.
+"""
+
+import os
 from pathlib import Path
 
 import pandas as pd
 
 
+ROOT_DIR = Path(__file__).resolve().parent.parent
 FILES = ("customers.csv", "subscriptions.csv", "payments.csv")
-DOWNLOADS_DIR = Path(r"C:\Users\robin\Downloads")
+SAMPLE_DIR = ROOT_DIR / "data" / "sample"
+RAW_DIR = ROOT_DIR / "data" / "raw"
+SOURCE_ENV_VAR = "SALESFLOW_SOURCE_DIR"
 
 
-def import_csv_files() -> None:
-    destination = Path(__file__).resolve().parent.parent / "data" / "raw"
+def resolve_source_dir(source_dir=None):
+    """Dossier source : argument, sinon variable d'environnement, sinon data/sample/."""
+    if source_dir:
+        return Path(source_dir).expanduser()
+    if os.environ.get(SOURCE_ENV_VAR):
+        return Path(os.environ[SOURCE_ENV_VAR]).expanduser()
+    return SAMPLE_DIR
 
-    sources = {name: DOWNLOADS_DIR / name for name in FILES}
+
+def import_csv_files(source_dir=None) -> None:
+    source = resolve_source_dir(source_dir)
+
+    sources = {name: source / name for name in FILES}
     missing = [str(path) for path in sources.values() if not path.is_file()]
     if missing:
         raise FileNotFoundError(
-            "Fichier(s) CSV introuvable(s) dans Téléchargements :\n"
+            f"Fichier(s) CSV introuvable(s) dans {source} :\n"
             + "\n".join(missing)
         )
 
@@ -26,8 +45,8 @@ def import_csv_files() -> None:
         for name, path in sources.items()
     }
 
-    destination.mkdir(parents=True, exist_ok=True)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
     for name, dataframe in dataframes.items():
-        target = destination / name
+        target = RAW_DIR / name
         dataframe.to_csv(target, index=False)
         print(f"Importé : {sources[name]} -> {target}")
