@@ -6,6 +6,8 @@
     python main.py --interactive    # anomalies traitées dans la console
     python main.py --auto           # sans fenêtre : lignes en anomalie écartées
     python main.py --skip-import    # réutilise data/raw/ sans réimporter
+    python main.py --demo           # test : données d'exemple avec toutes leurs
+                                    # erreurs, journal des corrections ignoré
 
 Le dossier source peut aussi être donné par la variable d'environnement
 SALESFLOW_SOURCE_DIR (voir src/import_data.py).
@@ -50,25 +52,26 @@ def step_import(source=None):
     import_data.import_csv_files(source)
 
 
-def step_clean_and_validate(mode="gui"):
+def step_clean_and_validate(mode="gui", use_journal=True):
     """Contrôle qualité, puis validation des anomalies selon `mode` :
-    "gui" (fenêtre), "console" ou "auto" (lignes en anomalie écartées)."""
+    "gui" (fenêtre), "console" ou "auto" (lignes en anomalie écartées).
+    use_journal=False (mode démo) : journal des corrections ignoré."""
     cleaning.main()
     print()
     if mode == "auto":
-        validation.auto_validate()
+        validation.auto_validate(use_journal=use_journal)
         return
 
     if mode == "gui":
         try:
-            saved = validation_gui.gui_validate()
+            saved = validation_gui.gui_validate(use_journal=use_journal)
         except validation_gui.tk.TclError as error:
             # Pas d'écran (serveur, tâche planifiée) : pas de blocage.
             print(f"Fenêtre impossible à ouvrir ({error}) : validation automatique.")
-            validation.auto_validate()
+            validation.auto_validate(use_journal=use_journal)
             return
     else:
-        saved = validation.main()
+        saved = validation.main(use_journal=use_journal)
 
     if not saved:
         raise PipelineError(
@@ -101,7 +104,8 @@ def step_report():
     report.main()
 
 
-def build_steps(validation_mode="gui", skip_import=False, source=None):
+def build_steps(validation_mode="gui", skip_import=False, source=None,
+                use_journal=True):
     """Liste des étapes : (titre, fonction, piste de résolution en cas d'échec)."""
     steps = [
         (
@@ -113,7 +117,7 @@ def build_steps(validation_mode="gui", skip_import=False, source=None):
         ),
         (
             "Nettoyage et validation",
-            lambda: step_clean_and_validate(validation_mode),
+            lambda: step_clean_and_validate(validation_mode, use_journal),
             "Vérifier les colonnes des CSV de data/raw/.",
         ),
         (
@@ -194,15 +198,24 @@ def main(argv=None):
         help="dossier des CSV sources (défaut : SALESFLOW_SOURCE_DIR, "
              "sinon data/sample/)",
     )
+    parser.add_argument(
+        "--demo", action="store_true",
+        help="test : relance sur data/sample/ avec toutes ses erreurs, sans "
+             "réappliquer ni modifier le journal des corrections",
+    )
     args = parser.parse_args(argv)
     if args.skip_import and args.source:
         parser.error("--source et --skip-import sont incompatibles")
+    if args.demo and (args.source or args.skip_import):
+        parser.error("--demo utilise toujours data/sample/ : "
+                     "incompatible avec --source et --skip-import")
     validation_mode = (
         "console" if args.interactive else "auto" if args.auto else "gui"
     )
-    return run_pipeline(
-        build_steps(validation_mode, args.skip_import, args.source)
-    )
+    source = import_data.SAMPLE_DIR if args.demo else args.source
+    return run_pipeline(build_steps(
+        validation_mode, args.skip_import, source, use_journal=not args.demo,
+    ))
 
 
 if __name__ == "__main__":

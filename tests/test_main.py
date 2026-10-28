@@ -191,19 +191,19 @@ def test_default_mode_opens_the_validation_window(project, monkeypatch):
     """Sans option, la fenêtre de validation est ouverte avant les calculs."""
     opened = []
 
-    def fake_window():
-        opened.append(True)
+    def fake_window(use_journal=True):
+        opened.append(use_journal)
         validation.auto_validate()  # comme si l'utilisateur avait continué
         return True
 
     monkeypatch.setattr(main.validation_gui, "gui_validate", fake_window)
     assert main.main(["--skip-import"]) == 0
-    assert opened == [True]
+    assert opened == [True]  # journal utilisé hors mode démo
     assert (project / "reports" / "monthly_report.xlsx").is_file()
 
 
 def test_cancelled_window_stops_the_pipeline(project, monkeypatch, capsys):
-    monkeypatch.setattr(main.validation_gui, "gui_validate", lambda: False)
+    monkeypatch.setattr(main.validation_gui, "gui_validate", lambda **kwargs: False)
 
     assert main.main(["--skip-import"]) == 1
 
@@ -213,7 +213,7 @@ def test_cancelled_window_stops_the_pipeline(project, monkeypatch, capsys):
 
 
 def test_without_display_falls_back_to_automatic_validation(project, monkeypatch, capsys):
-    def no_display():
+    def no_display(**kwargs):
         raise main.validation_gui.tk.TclError("no display name")
 
     monkeypatch.setattr(main.validation_gui, "gui_validate", no_display)
@@ -226,3 +226,70 @@ def test_without_display_falls_back_to_automatic_validation(project, monkeypatch
 def test_interactive_and_auto_are_exclusive():
     with pytest.raises(SystemExit):
         main.main(["--interactive", "--auto"])
+
+
+# ---------------------------------------------------------------------------
+# 5. Mode démo (--demo)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def demo_project(project, monkeypatch):
+    """Données d'exemple (avec P003 lié à un abonnement inconnu) et un
+    journal qui corrige déjà cette erreur."""
+    sample = project / "data" / "sample"
+    sample.mkdir()
+    for path in (project / "data" / "raw").iterdir():
+        (sample / path.name).write_bytes(path.read_bytes())
+    monkeypatch.setattr(import_data, "SAMPLE_DIR", sample)
+
+    journal = project / "anomalies" / "corrections.csv"
+    journal.parent.mkdir()
+    pd.DataFrame([{
+        "date": "2026-10-28 10:00:00", "file_name": "payments.csv",
+        "row_number": 4, "column_name": "subscription_id",
+        "error_message": "subscription_id inexistant dans subscriptions.csv : S999",
+        "action": "valeur modifiée", "old_value": "S999", "new_value": "S001",
+    }], columns=validation.CORRECTION_COLUMNS).to_csv(
+        journal, index=False, encoding="utf-8-sig")
+    return project
+
+
+def payment_ids(project):
+    connection = sqlite3.connect(project / "data" / "salesflow.db")
+    ids = sorted(row[0] for row in connection.execute("SELECT payment_id FROM payments"))
+    connection.close()
+    return ids
+
+
+def test_normal_run_applies_the_journal(demo_project):
+    assert main.main(["--auto", "--skip-import"]) == 0
+    assert payment_ids(demo_project) == ["P001", "P002", "P003"]  # P003 corrigé
+
+
+def test_demo_ignores_the_journal_and_leaves_it_unchanged(demo_project):
+    journal = demo_project / "anomalies" / "corrections.csv"
+    before = journal.read_bytes()
+
+    assert main.main(["--auto", "--demo"]) == 0
+
+    assert payment_ids(demo_project) == ["P001", "P002"]  # erreur non corrigée
+    assert journal.read_bytes() == before
+
+
+def test_demo_opens_the_window_without_journal(demo_project, monkeypatch):
+    calls = []
+
+    def fake_window(use_journal=True):
+        calls.append(use_journal)
+        validation.auto_validate(use_journal=use_journal)
+        return True
+
+    monkeypatch.setattr(main.validation_gui, "gui_validate", fake_window)
+    assert main.main(["--demo"]) == 0
+    assert calls == [False]
+
+
+@pytest.mark.parametrize("extra", [["--source", "exports"], ["--skip-import"]])
+def test_demo_is_incompatible_with_other_sources(extra):
+    with pytest.raises(SystemExit):
+        main.main(["--demo", *extra])
