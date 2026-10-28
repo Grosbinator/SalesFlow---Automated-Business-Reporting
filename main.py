@@ -1,11 +1,15 @@
 """Point d'entrée de SalesFlow : lance toute la chaîne de traitement.
 
-    python main.py                  # chaîne complète, sans interaction
+    python main.py                  # chaîne complète sur data/sample/
+    python main.py --source DOSSIER # importe les CSV d'un autre dossier
     python main.py --interactive    # traite les anomalies une par une
-    python main.py --skip-import    # réutilise data/raw/ (pas de Téléchargements)
+    python main.py --skip-import    # réutilise data/raw/ sans réimporter
+
+Le dossier source peut aussi être donné par la variable d'environnement
+SALESFLOW_SOURCE_DIR (voir src/import_data.py).
 
 Étapes, dans l'ordre :
-1. Import des fichiers sources (Téléchargements -> data/raw/)
+1. Import des fichiers sources (dossier source -> data/raw/)
 2. Nettoyage (anomalies/anomalies.csv) et validation (data/processed/)
 3. Chargement dans SQLite (data/salesflow.db)
 4. Calcul des indicateurs
@@ -39,8 +43,8 @@ class PipelineError(Exception):
 # Étapes
 # ---------------------------------------------------------------------------
 
-def step_import():
-    import_data.import_csv_files()
+def step_import(source=None):
+    import_data.import_csv_files(source)
 
 
 def step_clean_and_validate(interactive):
@@ -81,15 +85,15 @@ def step_report():
     report.main()
 
 
-def build_steps(interactive=False, skip_import=False):
+def build_steps(interactive=False, skip_import=False, source=None):
     """Liste des étapes : (titre, fonction, piste de résolution en cas d'échec)."""
     steps = [
         (
             "Import des fichiers sources",
-            step_import,
-            "Placer customers.csv, subscriptions.csv et payments.csv dans "
-            "Téléchargements, ou relancer avec --skip-import pour réutiliser "
-            "data/raw/.",
+            lambda: step_import(source),
+            "Vérifier que customers.csv, subscriptions.csv et payments.csv sont "
+            "dans le dossier source (--source DOSSIER ou SALESFLOW_SOURCE_DIR), "
+            "ou relancer avec --skip-import pour réutiliser data/raw/.",
         ),
         (
             "Nettoyage et validation",
@@ -162,10 +166,19 @@ def main(argv=None):
     )
     parser.add_argument(
         "--skip-import", action="store_true",
-        help="ne pas importer depuis Téléchargements, réutiliser data/raw/",
+        help="ne pas réimporter, réutiliser les fichiers de data/raw/",
+    )
+    parser.add_argument(
+        "--source", metavar="DOSSIER",
+        help="dossier des CSV sources (défaut : SALESFLOW_SOURCE_DIR, "
+             "sinon data/sample/)",
     )
     args = parser.parse_args(argv)
-    return run_pipeline(build_steps(args.interactive, args.skip_import))
+    if args.skip_import and args.source:
+        parser.error("--source et --skip-import sont incompatibles")
+    return run_pipeline(
+        build_steps(args.interactive, args.skip_import, args.source)
+    )
 
 
 if __name__ == "__main__":
