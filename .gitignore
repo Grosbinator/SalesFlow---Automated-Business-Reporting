@@ -6,6 +6,7 @@ __pycache__/
 
 # Données et fichiers générés par le pipeline
 *.csv
+!data/sample/*.csv
 *.db
 *.xlsx
 *.json

@@ -1,0 +1,17 @@
+subscription_id,customer_id,plan,monthly_price,start_date,end_date,status
+S001,C001,Starter,29.0,2026-01-12,,active
+S002,C002,Pro,79.0,2026-01-19,,active
+S003,C003,Starter,29.0,2026-02-03,2026-06-30,cancelled
+S004,C004,Business,199.0,2026-02-14,,active
+S005,C005,Pro,79.0,2026-03-01,,active
+S006,C006,Starter,29.0,2026-03-18,2026-08-31,cancelled
+S007,C007,Business,199.0,2026-04-02,,active
+S008,C008,Pro,79.0,2026-04-21,,active
+S009,C009,Starter,29.0,2026-05-06,,active
+S010,C010,Business,199.0,2026-05-22,,active
+S011,C011,Pro,79.0,2026-06-09,,active
+S012,C012,Starter,29.0,2026-07-11,,active
+S013,C013,Pro,79.0,2026-08-04,,active
+S014,C014,Business,199.0,2026-09-16,,active
+S015,C015,Starter,29.0,2026-10-02,,active
+S016,C999,Pro,79.0,2026-10-05,,active
