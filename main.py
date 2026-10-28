@@ -1,8 +1,10 @@
 """Point d'entrée de SalesFlow : lance toute la chaîne de traitement.
 
-    python main.py                  # chaîne complète sur data/sample/
+    python main.py                  # chaîne complète sur data/sample/ ; une
+                                    # fenêtre s'ouvre pour traiter les anomalies
     python main.py --source DOSSIER # importe les CSV d'un autre dossier
-    python main.py --interactive    # traite les anomalies une par une
+    python main.py --interactive    # anomalies traitées dans la console
+    python main.py --auto           # sans fenêtre : lignes en anomalie écartées
     python main.py --skip-import    # réutilise data/raw/ sans réimporter
 
 Le dossier source peut aussi être donné par la variable d'environnement
@@ -33,6 +35,7 @@ import database  # noqa: E402
 import import_data  # noqa: E402
 import report  # noqa: E402
 import validation  # noqa: E402
+import validation_gui  # noqa: E402
 
 
 class PipelineError(Exception):
@@ -47,17 +50,30 @@ def step_import(source=None):
     import_data.import_csv_files(source)
 
 
-def step_clean_and_validate(interactive):
+def step_clean_and_validate(mode="gui"):
+    """Contrôle qualité, puis validation des anomalies selon `mode` :
+    "gui" (fenêtre), "console" ou "auto" (lignes en anomalie écartées)."""
     cleaning.main()
     print()
-    if interactive:
-        if not validation.main():
-            raise PipelineError(
-                "validation non enregistrée : data/processed/ n'a pas été "
-                "mis à jour."
-            )
-    else:
+    if mode == "auto":
         validation.auto_validate()
+        return
+
+    if mode == "gui":
+        try:
+            saved = validation_gui.gui_validate()
+        except validation_gui.tk.TclError as error:
+            # Pas d'écran (serveur, tâche planifiée) : pas de blocage.
+            print(f"Fenêtre impossible à ouvrir ({error}) : validation automatique.")
+            validation.auto_validate()
+            return
+    else:
+        saved = validation.main()
+
+    if not saved:
+        raise PipelineError(
+            "validation annulée : data/processed/ n'a pas été mis à jour."
+        )
 
 
 def step_load():
@@ -85,7 +101,7 @@ def step_report():
     report.main()
 
 
-def build_steps(interactive=False, skip_import=False, source=None):
+def build_steps(validation_mode="gui", skip_import=False, source=None):
     """Liste des étapes : (titre, fonction, piste de résolution en cas d'échec)."""
     steps = [
         (
@@ -97,7 +113,7 @@ def build_steps(interactive=False, skip_import=False, source=None):
         ),
         (
             "Nettoyage et validation",
-            lambda: step_clean_and_validate(interactive),
+            lambda: step_clean_and_validate(validation_mode),
             "Vérifier les colonnes des CSV de data/raw/.",
         ),
         (
@@ -160,9 +176,14 @@ def main(argv=None):
         description="SalesFlow : import, nettoyage, base SQLite, "
                     "indicateurs et rapport Excel."
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--interactive", action="store_true",
-        help="traiter les anomalies une par une dans la console",
+        help="traiter les anomalies dans la console au lieu de la fenêtre",
+    )
+    mode.add_argument(
+        "--auto", action="store_true",
+        help="sans fenêtre ni question : les lignes en anomalie sont écartées",
     )
     parser.add_argument(
         "--skip-import", action="store_true",
@@ -176,8 +197,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.skip_import and args.source:
         parser.error("--source et --skip-import sont incompatibles")
+    validation_mode = (
+        "console" if args.interactive else "auto" if args.auto else "gui"
+    )
     return run_pipeline(
-        build_steps(args.interactive, args.skip_import, args.source)
+        build_steps(validation_mode, args.skip_import, args.source)
     )
 
 
