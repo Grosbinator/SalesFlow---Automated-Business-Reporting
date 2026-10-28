@@ -263,6 +263,15 @@ def load_journal():
     return journal.to_dict("records")
 
 
+def previous_decisions(use_journal=True, show=print):
+    """Décisions à réappliquer : celles du journal, ou aucune en mode démo
+    (pour retrouver toutes les erreurs des données et tester la validation)."""
+    if use_journal:
+        return load_journal()
+    show("Mode démo : journal des corrections ignoré (et non modifié).")
+    return []
+
+
 def replay(frames, journal):
     """Réapplique les décisions des sessions précédentes.
 
@@ -333,12 +342,15 @@ def to_processed(name, df):
     return df
 
 
-def save(frames, log):
+def save(frames, log, use_journal=True):
+    """Écrit data/processed/ et, sauf en mode démo, complète le journal."""
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     for name, processed_name in PROCESSED_FILES.items():
         to_processed(name, frames[name]).to_csv(
             PROCESSED_DIR / processed_name, index=False
         )
+    if not use_journal:
+        return
 
     # Journal cumulatif : on ajoute à la suite des sessions précédentes.
     CORRECTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -358,16 +370,17 @@ def show_counts(frames, show):
         show(f"  {name} : {len(df)} ligne(s) conservée(s)")
 
 
-def auto_validate(show=print):
+def auto_validate(show=print, use_journal=True):
     """Validation sans console (utilisée par main.py).
 
-    Réapplique les décisions du journal, écarte les lignes encore en
-    anomalie, puis enregistre data/processed/. Renvoie les données.
+    Réapplique les décisions du journal (sauf use_journal=False, mode
+    démo), écarte les lignes encore en anomalie, puis enregistre
+    data/processed/. Renvoie les données.
     """
     frames = load_frames()
-    kept, applied = replay(frames, load_journal())
+    kept, applied = replay(frames, previous_decisions(use_journal, show))
     excluded = exclude_unresolved(frames, kept)
-    save(frames, [])
+    save(frames, [], use_journal)
 
     show(f"{applied} décision(s) du journal réappliquée(s).")
     show(f"{len(excluded)} anomalie(s) non traitée(s) : lignes écartées "
@@ -376,11 +389,15 @@ def auto_validate(show=print):
     return frames
 
 
-def main(ask=input, show=print):
-    """Console de validation. Renvoie True si les données ont été enregistrées."""
+def main(ask=input, show=print, use_journal=True):
+    """Console de validation. Renvoie True si les données ont été enregistrées.
+
+    use_journal=False (mode démo) : le journal n'est ni réappliqué ni
+    complété, toutes les erreurs des données sont proposées.
+    """
     frames = load_frames()
     show("Validation des anomalies (data/raw/ n'est jamais modifié).")
-    kept, applied = replay(frames, load_journal())
+    kept, applied = replay(frames, previous_decisions(use_journal, show))
     if applied:
         show(f"{applied} décision(s) des sessions précédentes réappliquée(s).")
 
@@ -404,8 +421,9 @@ def main(ask=input, show=print):
     if not log:
         show("Aucune modification.")
     if ask_yes_no(ask, f"Enregistrer dans {PROCESSED_DIR} ?"):
-        save(frames, log)
-        show(f"Données nettoyées enregistrées. Journal : {CORRECTIONS_FILE}")
+        save(frames, log, use_journal)
+        show("Données nettoyées enregistrées."
+             + (f" Journal : {CORRECTIONS_FILE}" if use_journal else ""))
         return True
     show("Rien n'a été enregistré.")
     return False
