@@ -117,7 +117,7 @@ def project(tmp_path, monkeypatch):
 
 
 def test_full_pipeline_produces_the_report(project):
-    assert main.main(["--skip-import"]) == 0
+    assert main.main(["--auto", "--skip-import"]) == 0
 
     workbook = load_workbook(project / "reports" / "monthly_report.xlsx")
     assert workbook.sheetnames == [
@@ -136,7 +136,7 @@ def test_full_pipeline_produces_the_report(project):
 def test_critical_error_produces_no_report(project, capsys):
     (project / "data" / "raw" / "customers.csv").unlink()
 
-    assert main.main(["--skip-import"]) == 1
+    assert main.main(["--auto", "--skip-import"]) == 1
 
     assert not (project / "reports" / "monthly_report.xlsx").exists()
     output = capsys.readouterr().out
@@ -145,8 +145,8 @@ def test_critical_error_produces_no_report(project, capsys):
 
 
 def test_running_twice_gives_the_same_database(project):
-    assert main.main(["--skip-import"]) == 0
-    assert main.main(["--skip-import"]) == 0
+    assert main.main(["--auto", "--skip-import"]) == 0
+    assert main.main(["--auto", "--skip-import"]) == 0
     connection = sqlite3.connect(project / "data" / "salesflow.db")
     assert connection.execute("SELECT COUNT(*) FROM payments").fetchone() == (2,)
     connection.close()
@@ -163,14 +163,14 @@ def test_source_option_imports_from_the_given_folder(project):
     for path in (project / "data" / "raw").iterdir():
         path.replace(exports / path.name)  # data/raw/ vide avant l'import
 
-    assert main.main(["--source", str(exports)]) == 0
+    assert main.main(["--auto", "--source", str(exports)]) == 0
 
     assert (project / "data" / "raw" / "payments.csv").is_file()
     assert (project / "reports" / "monthly_report.xlsx").is_file()
 
 
 def test_missing_source_folder_stops_at_import(project, capsys):
-    assert main.main(["--source", str(project / "absent")]) == 1
+    assert main.main(["--auto", "--source", str(project / "absent")]) == 1
 
     output = capsys.readouterr().out
     assert "ÉCHEC à l'étape 1/5 (Import des fichiers sources)" in output
@@ -180,4 +180,49 @@ def test_missing_source_folder_stops_at_import(project, capsys):
 
 def test_source_and_skip_import_are_incompatible():
     with pytest.raises(SystemExit):
-        main.main(["--source", "exports", "--skip-import"])
+        main.main(["--auto", "--source", "exports", "--skip-import"])
+
+
+# ---------------------------------------------------------------------------
+# 4. Mode de validation (fenêtre par défaut, console, auto)
+# ---------------------------------------------------------------------------
+
+def test_default_mode_opens_the_validation_window(project, monkeypatch):
+    """Sans option, la fenêtre de validation est ouverte avant les calculs."""
+    opened = []
+
+    def fake_window():
+        opened.append(True)
+        validation.auto_validate()  # comme si l'utilisateur avait continué
+        return True
+
+    monkeypatch.setattr(main.validation_gui, "gui_validate", fake_window)
+    assert main.main(["--skip-import"]) == 0
+    assert opened == [True]
+    assert (project / "reports" / "monthly_report.xlsx").is_file()
+
+
+def test_cancelled_window_stops_the_pipeline(project, monkeypatch, capsys):
+    monkeypatch.setattr(main.validation_gui, "gui_validate", lambda: False)
+
+    assert main.main(["--skip-import"]) == 1
+
+    output = capsys.readouterr().out
+    assert "validation annulée" in output
+    assert not (project / "reports" / "monthly_report.xlsx").exists()
+
+
+def test_without_display_falls_back_to_automatic_validation(project, monkeypatch, capsys):
+    def no_display():
+        raise main.validation_gui.tk.TclError("no display name")
+
+    monkeypatch.setattr(main.validation_gui, "gui_validate", no_display)
+
+    assert main.main(["--skip-import"]) == 0
+    assert "validation automatique" in capsys.readouterr().out
+    assert (project / "reports" / "monthly_report.xlsx").is_file()
+
+
+def test_interactive_and_auto_are_exclusive():
+    with pytest.raises(SystemExit):
+        main.main(["--interactive", "--auto"])
