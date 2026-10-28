@@ -6,7 +6,7 @@
 ![pandas](https://img.shields.io/badge/pandas-data%20cleaning-150458?logo=pandas&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-SQL%20analytics-003B57?logo=sqlite&logoColor=white)
 ![Excel](https://img.shields.io/badge/openpyxl-Excel%20reporting-217346)
-![Tests](https://img.shields.io/badge/tests-83%20passing-2ea44f?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-93%20passing-2ea44f?logo=pytest&logoColor=white)
 
 SalesFlow is an end-to-end data pipeline built for a fictional SaaS startup. It takes three CSV
 exports (customers, subscriptions, payments), detects and handles data quality issues, loads the
@@ -161,16 +161,29 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Put `customers.csv`, `subscriptions.csv` and `payments.csv` in `data/raw/`, then run:
+Then run the pipeline. It works right away on the sample data shipped in
+[`data/sample/`](data/sample/), which contains intentional errors to show the quality checks:
 
 ```bash
-python main.py --skip-import
+python main.py
+```
+
+The Excel report is written to `reports/monthly_report.xlsx`.
+
+To process your own exports, point the pipeline to the folder containing `customers.csv`,
+`subscriptions.csv` and `payments.csv`:
+
+```bash
+python main.py --source path/to/exports
+# or once for all runs:
+export SALESFLOW_SOURCE_DIR=path/to/exports     # PowerShell: $env:SALESFLOW_SOURCE_DIR="..."
 ```
 
 | Command | What it does |
 |---|---|
-| `python main.py` | Full pipeline, importing the CSV files from the Downloads folder |
-| `python main.py --skip-import` | Full pipeline using the files already in `data/raw/` |
+| `python main.py` | Full pipeline on the sample data (or on `SALESFLOW_SOURCE_DIR` if set) |
+| `python main.py --source DIR` | Full pipeline on the CSV files found in `DIR` |
+| `python main.py --skip-import` | Full pipeline on the files already in `data/raw/` |
 | `python main.py --interactive` | Review anomalies one by one before loading the data |
 | `python src/validation.py` | Validation console only |
 | `python -m pytest -v` | Run the test suite |
@@ -189,14 +202,15 @@ python main.py --skip-import
 .
 ├── main.py                 # Orchestrates the 5 steps, fail-fast with explicit errors
 ├── src/
-│   ├── import_data.py      # Copies the source CSV files into data/raw/
+│   ├── import_data.py      # Copies the source CSV files (configurable folder) into data/raw/
 │   ├── cleaning.py         # Quality checks -> anomalies/anomalies.csv
 │   ├── validation.py       # Interactive / automatic validation -> data/processed/
 │   ├── database.py         # SQLite schema (PK/FK), idempotent loading
 │   ├── analytics.py        # KPIs written in SQL
 │   └── report.py           # Excel report (openpyxl) and charts (matplotlib)
-├── tests/                  # 83 pytest tests, one file per module
-├── data/raw/               # Source CSV files (not versioned)
+├── tests/                  # 93 pytest tests, one file per module
+├── data/sample/            # Synthetic sample exports, with intentional errors
+├── data/raw/               # Imported CSV files (generated)
 ├── data/processed/         # Clean CSV files (generated)
 ├── anomalies/              # Data quality report and corrections journal (generated)
 ├── reports/                # Excel report (generated)
@@ -224,7 +238,7 @@ python main.py --skip-import
 python -m pytest -v
 ```
 
-83 tests cover the quality checks, the validation console (with simulated keyboard input),
+93 tests cover the source folder selection, the quality checks, the validation console (with simulated keyboard input),
 SQLite loading and referential integrity, KPI calculations on datasets with known results,
 the Excel workbook content, and the full pipeline end to end, including the failure cases.
 Tests never touch the real files in `data/`.
