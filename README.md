@@ -6,7 +6,7 @@
 ![pandas](https://img.shields.io/badge/pandas-data%20cleaning-150458?logo=pandas&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-SQL%20analytics-003B57?logo=sqlite&logoColor=white)
 ![Excel](https://img.shields.io/badge/openpyxl-Excel%20reporting-217346)
-![Tests](https://img.shields.io/badge/tests-109%20passing-2ea44f?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-117%20passing-2ea44f?logo=pytest&logoColor=white)
 
 SalesFlow is an end-to-end data pipeline built for a fictional SaaS startup. It takes three CSV
 exports (customers, subscriptions, payments), detects and handles data quality issues, loads the
@@ -123,6 +123,8 @@ line in the original CSV.
 When anomalies remain, `python main.py` opens a window **before any calculation**: the user
 fixes a value, deletes the row or keeps it as is, then clicks *Enregistrer et continuer* and
 the pipeline resumes. *Annuler* stops the pipeline without saving anything.
+To try it again once the anomalies have been fixed, run `python main.py --demo`: the sample
+data is reloaded with all its errors and the corrections journal is ignored (and left untouched).
 
 <p align="center">
   <img src="docs/images/validation_window.png" alt="Validation window listing the anomalies, with the faulty cell highlighted" width="760">
@@ -198,6 +200,7 @@ export SALESFLOW_SOURCE_DIR=path/to/exports     # PowerShell: $env:SALESFLOW_SOU
 | `python main.py --skip-import` | Full pipeline on the files already in `data/raw/` |
 | `python main.py --interactive` | Review anomalies in the console instead of the window |
 | `python main.py --auto` | No window, no question: rows with anomalies are excluded (scheduled runs) |
+| `python main.py --demo` | Test mode: sample data with all its errors, corrections journal ignored and left untouched |
 | `python src/validation.py` | Validation console only |
 | `python -m pytest -v` | Run the test suite |
 
@@ -222,7 +225,7 @@ export SALESFLOW_SOURCE_DIR=path/to/exports     # PowerShell: $env:SALESFLOW_SOU
 │   ├── database.py         # SQLite schema (PK/FK), idempotent loading
 │   ├── analytics.py        # KPIs written in SQL
 │   └── report.py           # Excel report (openpyxl) and charts (matplotlib)
-├── tests/                  # 109 pytest tests, one file per module
+├── tests/                  # 117 pytest tests, one file per module
 ├── data/sample/            # Synthetic sample exports, with intentional errors
 ├── data/raw/               # Imported CSV files (generated)
 ├── data/processed/         # Clean CSV files (generated)
@@ -252,7 +255,7 @@ export SALESFLOW_SOURCE_DIR=path/to/exports     # PowerShell: $env:SALESFLOW_SOU
 python -m pytest -v
 ```
 
-109 tests cover the source folder selection, the quality checks, the validation console (with simulated keyboard input), the validation window (with simulated clicks),
+117 tests cover the source folder selection, the quality checks, the validation console (with simulated keyboard input), the validation window (with simulated clicks),
 SQLite loading and referential integrity, KPI calculations on datasets with known results,
 the Excel workbook content, and the full pipeline end to end, including the failure cases.
 Tests never touch the real files in `data/`.
