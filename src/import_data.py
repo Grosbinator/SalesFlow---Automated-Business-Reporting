@@ -4,8 +4,11 @@ Dossier source, par ordre de priorité :
 1. l'argument `source_dir` (option --source) ;
 2. la variable d'environnement SALESFLOW_SOURCE_DIR ;
 3. data/sample/ : données d'exemple fournies avec le projet.
+
+Usage : python src/import_data.py [--source DOSSIER]
 """
 
+import argparse
 import os
 from pathlib import Path
 
@@ -50,3 +53,20 @@ def import_csv_files(source_dir=None) -> None:
         target = RAW_DIR / name
         dataframe.to_csv(target, index=False)
         print(f"Importé : {sources[name]} -> {target}")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Copie customers.csv, subscriptions.csv et payments.csv "
+                    "vers data/raw/."
+    )
+    parser.add_argument(
+        "--source",
+        help=f"dossier des CSV (défaut : ${SOURCE_ENV_VAR}, sinon data/sample/)",
+    )
+    args = parser.parse_args(argv)
+    import_csv_files(args.source)
+
+
+if __name__ == "__main__":
+    main()
