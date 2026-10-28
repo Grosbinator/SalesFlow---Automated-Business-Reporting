@@ -1,0 +1,16 @@
+customer_id,company_name,email,signup_date,country
+C001,NovaTech,contact@novatech.example,2026-01-12,France
+C002,Greenlytic,hello@greenlytic.example,2026-01-19,France
+C003,BrightDesk,ops@brightdesk.example,2026-02-03,Belgium
+C004,CloudHarbor,admin@cloudharbor.example,2026-02-14,France
+C005,MetricFox,team@metricfox.example,2026-03-01,Switzerland
+C006,UrbanLeaf,contact@urbanleaf.example,2026-03-18,France
+C007,PixelForge,billing@pixelforge.example,2026-04-02,Belgium
+C008,DataNest,hello@datanest.example,2026-04-21,France
+C009,OrbitWorks,finance@orbitworks.example,2026-05-06,Luxembourg
+C010,BluePeak,support@bluepeak.example,2026-05-22,France
+C011,Northstar Labs,team@northstar.example,2026-06-09,Canada
+C012,KiteMetric,hello@kitemetric.example,2026-07-11,France
+C013,EchoSystems,contact@echosystems.example,2026-08-04,Belgium
+C014,AtlasFlow,admin@atlasflow.example,2026-09-16,France
+C015,SampleWorks,demo@sampleworks.example,2026-10-02,France
