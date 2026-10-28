@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT_DIR / "src"))
 
 import cleaning  # noqa: E402
 import database  # noqa: E402
+import import_data  # noqa: E402
 import main  # noqa: E402
 import report  # noqa: E402
 import validation  # noqa: E402
@@ -102,6 +103,8 @@ def project(tmp_path, monkeypatch):
     anomalies = tmp_path / "anomalies"
     processed = tmp_path / "data" / "processed"
     monkeypatch.setattr(cleaning, "RAW_DIR", raw)
+    monkeypatch.setattr(import_data, "RAW_DIR", raw)
+    monkeypatch.delenv(import_data.SOURCE_ENV_VAR, raising=False)
     monkeypatch.setattr(cleaning, "ANOMALIES_DIR", anomalies)
     monkeypatch.setattr(cleaning, "ANOMALIES_FILE", anomalies / "anomalies.csv")
     monkeypatch.setattr(report, "ANOMALIES_FILE", anomalies / "anomalies.csv")
@@ -147,3 +150,34 @@ def test_running_twice_gives_the_same_database(project):
     connection = sqlite3.connect(project / "data" / "salesflow.db")
     assert connection.execute("SELECT COUNT(*) FROM payments").fetchone() == (2,)
     connection.close()
+
+
+# ---------------------------------------------------------------------------
+# 3. Dossier source (--source)
+# ---------------------------------------------------------------------------
+
+def test_source_option_imports_from_the_given_folder(project):
+    """--source : les CSV sont importés depuis ce dossier vers data/raw/."""
+    exports = project / "exports"
+    exports.mkdir()
+    for path in (project / "data" / "raw").iterdir():
+        path.replace(exports / path.name)  # data/raw/ vide avant l'import
+
+    assert main.main(["--source", str(exports)]) == 0
+
+    assert (project / "data" / "raw" / "payments.csv").is_file()
+    assert (project / "reports" / "monthly_report.xlsx").is_file()
+
+
+def test_missing_source_folder_stops_at_import(project, capsys):
+    assert main.main(["--source", str(project / "absent")]) == 1
+
+    output = capsys.readouterr().out
+    assert "ÉCHEC à l'étape 1/5 (Import des fichiers sources)" in output
+    assert "--source DOSSIER" in output  # la piste explique quoi faire
+    assert not (project / "reports" / "monthly_report.xlsx").exists()
+
+
+def test_source_and_skip_import_are_incompatible():
+    with pytest.raises(SystemExit):
+        main.main(["--source", "exports", "--skip-import"])
