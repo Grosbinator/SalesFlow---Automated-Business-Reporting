@@ -330,3 +330,47 @@ def test_session_applies_decisions_and_logs_them():
     assert [entry["action"] for entry in session.log] == [
         "valeur modifiée", "gardée telle quelle", "ligne supprimée",
     ]
+
+
+# ---------------------------------------------------------------------------
+# 6. Mode démo : journal ignoré et non modifié
+# ---------------------------------------------------------------------------
+
+def write_journal(output, *entries):
+    pd.DataFrame(entries, columns=validation.CORRECTION_COLUMNS).to_csv(
+        output / "corrections.csv", index=False, encoding="utf-8-sig"
+    )
+    return (output / "corrections.csv").read_bytes()
+
+
+def test_demo_console_proposes_errors_already_fixed_in_the_journal(output, monkeypatch):
+    """Le journal corrige déjà le montant, mais en démo l'erreur est reproposée."""
+    monkeypatch.setattr(
+        validation, "load_frames",
+        lambda: make_frames(payments=make_df(VALID_PAYMENT, {"amount": ""})),
+    )
+    before = write_journal(output, journal_entry(
+        2, "amount", "Valeur manquante", "valeur modifiée", "", "29.0"))
+    console = Console()
+
+    validation.main(answers("m", "49.0", "o"), console, use_journal=False)
+
+    assert "Valeur manquante" in console.text
+    saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
+    assert list(saved["amount"]) == ["49.0"]
+    assert (output / "corrections.csv").read_bytes() == before  # journal intact
+
+
+def test_demo_auto_validation_ignores_the_journal(output, monkeypatch):
+    monkeypatch.setattr(
+        validation, "load_frames",
+        lambda: make_frames(payments=make_df(VALID_PAYMENT, {"amount": ""})),
+    )
+    before = write_journal(output, journal_entry(
+        2, "amount", "Valeur manquante", "valeur modifiée", "", "29.0"))
+
+    validation.auto_validate(show=Console(), use_journal=False)
+
+    saved = pd.read_csv(output / "processed" / "payments_clean.csv", dtype=str)
+    assert saved.empty  # non corrigée par le journal : la ligne est écartée
+    assert (output / "corrections.csv").read_bytes() == before
